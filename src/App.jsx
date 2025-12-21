@@ -23,20 +23,20 @@ import {
 import { 
   Users, Plus, Trash2, LogOut, LayoutGrid, 
   CheckCircle2, XCircle, Triangle, Circle, Hexagon, Square, 
-  Loader2, Edit3
+  Loader2, Edit3, Image as ImageIcon
 } from 'lucide-react';
 
 // ==========================================
 // CONFIGURATION
 // ==========================================
 const firebaseConfig = {
-  apiKey: "AIzaSyAYtsSzPBLdZ6gnsFJZvyXEwBvq5xxsahY",
-  authDomain: "mohoot-007.firebaseapp.com",
-  projectId: "mohoot-007",
-  storageBucket: "mohoot-007.firebasestorage.app",
-  messagingSenderId: "277114765994",
-  appId: "1:277114765994:web:5d5beff3bb4be86d8dc6d3",
-  measurementId: "G-6BT67EJXQG"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
@@ -92,17 +92,40 @@ export default function App() {
   const [view, setView] = useState('LANDING');
 
   useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash === '#host') setView('HOST');
+      else if (hash === '#play') setView('PLAYER');
+      else setView('LANDING');
+    };
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const navigate = (newView) => {
+    if (newView === 'HOST') window.location.hash = 'host';
+    else if (newView === 'PLAYER') window.location.hash = 'play';
+    else window.location.hash = '';
+    setView(newView);
+  }
+
+  useEffect(() => {
     return onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser(u);
-        const userRef = doc(db, 'users', u.uid);
-        await setDoc(userRef, {
-          email: u.email,
-          name: u.displayName,
-          photo: u.photoURL,
-          lastLogin: serverTimestamp(),
-          loginCount: increment(1)
-        }, { merge: true });
+        try {
+          const userRef = doc(db, 'users', u.uid);
+          await setDoc(userRef, {
+            email: u.email,
+            name: u.displayName,
+            photo: u.photoURL,
+            lastLogin: serverTimestamp(),
+            loginCount: increment(1)
+          }, { merge: true });
+        } catch (e) {
+          console.error("User Stats Error:", e);
+        }
       } else {
         setUser(null);
       }
@@ -114,6 +137,7 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Login failed", error);
+      alert("Login failed: " + error.message);
     }
   };
 
@@ -139,7 +163,6 @@ export default function App() {
           <div className="text-sm font-bold">{user.displayName}</div>
           <div className="text-xs text-[#5F6368]">{user.email}</div>
         </div>
-        {/* FIX: Added referrerPolicy to fix broken Google profile images */}
         <img 
             src={user.photoURL} 
             referrerPolicy="no-referrer"
@@ -155,7 +178,7 @@ export default function App() {
         <div className="h-screen flex flex-col items-center justify-center p-6 max-w-5xl mx-auto">
            <h1 className="text-5xl font-black mb-12 text-[#202124] tracking-tighter">Mohoot<span className="text-[#EA4335]">!</span></h1>
           <div className="grid md:grid-cols-2 gap-8 w-full">
-            <div onClick={() => setView('HOST')} className="group bg-white p-10 rounded-2xl shadow border border-[#DADCE0] hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer">
+            <div onClick={() => navigate('HOST')} className="group bg-white p-10 rounded-2xl shadow border border-[#DADCE0] hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer">
               <div className="bg-[#E8F0FE] w-16 h-16 rounded-xl flex items-center justify-center text-[#1967D2] mb-6">
                 <LayoutGrid size={32} />
               </div>
@@ -163,7 +186,7 @@ export default function App() {
               <p className="text-[#5F6368]">Create quizzes and dominate the room.</p>
             </div>
 
-            <div onClick={() => setView('PLAYER')} className="group bg-white p-10 rounded-2xl shadow border border-[#DADCE0] hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer">
+            <div onClick={() => navigate('PLAYER')} className="group bg-white p-10 rounded-2xl shadow border border-[#DADCE0] hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer">
               <div className="bg-[#E6F4EA] w-16 h-16 rounded-xl flex items-center justify-center text-[#188038] mb-6">
                 <Users size={32} />
               </div>
@@ -174,8 +197,8 @@ export default function App() {
         </div>
       )}
 
-      {view === 'HOST' && <HostApp user={user} onBack={() => setView('LANDING')} />}
-      {view === 'PLAYER' && <PlayerApp user={user} onBack={() => setView('LANDING')} />}
+      {view === 'HOST' && <HostApp user={user} onBack={() => navigate('LANDING')} />}
+      {view === 'PLAYER' && <PlayerApp user={user} onBack={() => navigate('LANDING')} />}
     </div>
   );
 }
@@ -201,16 +224,24 @@ const HostApp = ({ user, onBack }) => {
   const createNewQuiz = () => {
     setEditingQuiz({
       title: "Untitled Quiz",
-      questions: [{ text: "", answers: ["", "", "", ""], correct: 0, duration: 20 }]
+      questions: [{ text: "", image: "", answers: ["", "", "", ""], correct: 0, duration: 20 }]
     });
     setSubView('EDITOR');
   };
 
   const handleSaveQuiz = async (quizData) => {
-    const qRef = collection(db, 'artifacts', appId, 'users', user.uid, 'quizzes');
-    if (quizData.id) await updateDoc(doc(qRef, quizData.id), quizData);
-    else await addDoc(qRef, { ...quizData, createdAt: serverTimestamp() });
-    setSubView('DASHBOARD');
+    try {
+      const qRef = collection(db, 'artifacts', appId, 'users', user.uid, 'quizzes');
+      if (quizData.id) {
+         await updateDoc(doc(qRef, quizData.id), quizData);
+      } else {
+         await addDoc(qRef, { ...quizData, createdAt: serverTimestamp() });
+      }
+      setSubView('DASHBOARD');
+    } catch (error) {
+      console.error("Save Error:", error);
+      throw error; // Propagate to child
+    }
   };
 
   return (
@@ -251,7 +282,6 @@ const HostApp = ({ user, onBack }) => {
 const QuizEditor = ({ initialData, onSave, onCancel }) => {
   const [quiz, setQuiz] = useState(initialData);
   const [idx, setIdx] = useState(0);
-  // FIX: Added local loading state to prevent double-clicks
   const [isSaving, setIsSaving] = useState(false);
 
   const updateQ = (field, val) => {
@@ -268,8 +298,13 @@ const QuizEditor = ({ initialData, onSave, onCancel }) => {
 
   const handleSaveClick = async () => {
       setIsSaving(true);
-      await onSave(quiz);
-      // onSave changes the parent view, so we don't need to set isSaving(false) here
+      try {
+        await onSave(quiz);
+        // Parent unmounts us on success, so we don't need to stop loading
+      } catch (error) {
+        alert("Failed to save: " + error.message);
+        setIsSaving(false);
+      }
   };
 
   return (
@@ -281,7 +316,7 @@ const QuizEditor = ({ initialData, onSave, onCancel }) => {
           </div>
         ))}
         <Button variant="secondary" className="w-full mt-2" onClick={() => {
-          setQuiz({...quiz, questions: [...quiz.questions, { text: "", answers: ["", "", "", ""], correct: 0, duration: 20 }]});
+          setQuiz({...quiz, questions: [...quiz.questions, { text: "", image: "", answers: ["", "", "", ""], correct: 0, duration: 20 }]});
           setIdx(quiz.questions.length);
         }}>Add Question</Button>
       </div>
@@ -289,7 +324,21 @@ const QuizEditor = ({ initialData, onSave, onCancel }) => {
       <div className="flex-1 bg-white border border-[#DADCE0] rounded-xl p-8 overflow-y-auto">
         <Input label="Quiz Title" value={quiz.title} onChange={v => setQuiz({...quiz, title: v})} />
         <div className="h-8" />
-        <Input label="Question Text" value={quiz.questions[idx].text} onChange={v => updateQ('text', v)} />
+        <div className="space-y-4">
+            <Input label="Question Text" value={quiz.questions[idx].text} onChange={v => updateQ('text', v)} />
+            <div className="flex items-center gap-2">
+                <ImageIcon size={20} className="text-gray-400" />
+                <Input 
+                    label="Image URL (Optional)" 
+                    value={quiz.questions[idx].image || ''} 
+                    onChange={v => updateQ('image', v)} 
+                    placeholder="https://..."
+                />
+            </div>
+            {quiz.questions[idx].image && (
+                <img src={quiz.questions[idx].image} alt="Preview" className="h-40 rounded-lg object-contain border border-gray-200" />
+            )}
+        </div>
         
         <div className="grid grid-cols-2 gap-4 mt-6">
           {quiz.questions[idx].answers.map((ans, i) => (
@@ -325,9 +374,7 @@ const HostGameEngine = ({ quizId, hostId, onExit, allQuizzes }) => {
       const newPin = Math.floor(100000 + Math.random() * 900000).toString();
       setPin(newPin);
       
-      // FIX: Changed path to 4 segments (Collection/Doc/Collection/Doc)
-      // Old Invalid: artifacts/appId/public/data/session_PIN (5 segments)
-      // New Valid: artifacts/appId/sessions/PIN (4 segments)
+      // Path: artifacts/{appId}/sessions/{pin}
       await setDoc(doc(db, 'artifacts', appId, 'sessions', newPin), {
         hostId, quizId, status: 'LOBBY', currentQuestionIndex: 0, players: {}, quizSnapshot: quiz
       });
@@ -379,9 +426,18 @@ const HostGameEngine = ({ quizId, hostId, onExit, allQuizzes }) => {
         <div className="text-3xl font-black">{session.status}</div>
       </div>
       {session.status === 'QUESTION' ? (
-        <div className="flex-1">
-          <h2 className="text-4xl font-medium text-center mb-12">{qData.questions[session.currentQuestionIndex].text}</h2>
-          <div className="grid grid-cols-2 gap-6 h-96">
+        <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col justify-center items-center mb-8">
+            {qData.questions[session.currentQuestionIndex].image && (
+                <img 
+                    src={qData.questions[session.currentQuestionIndex].image} 
+                    className="max-h-[40vh] object-contain rounded-lg shadow-md mb-8"
+                    alt="Question"
+                />
+            )}
+            <h2 className="text-4xl font-medium text-center">{qData.questions[session.currentQuestionIndex].text}</h2>
+          </div>
+          <div className="grid grid-cols-2 gap-6 h-64">
             {qData.questions[session.currentQuestionIndex].answers.map((a, i) => (
                <div key={i} className={`${SHAPES[i].color} rounded-2xl flex items-center px-8 text-white text-2xl font-bold shadow-md`}>
                  <span className="mr-6 bg-black/20 w-12 h-12 flex items-center justify-center rounded-lg">{i+1}</span> {a}
@@ -419,12 +475,11 @@ const PlayerApp = ({ user, onBack }) => {
   const [session, setSession] = useState(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [result, setResult] = useState(null);
-  // FIX: Added error state for "Game Not Found"
   const [errorMsg, setErrorMsg] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
 
   useEffect(() => {
     if (step === 'JOIN') return;
-    // FIX: Updated path to match Host
     return onSnapshot(doc(db, 'artifacts', appId, 'sessions', pin), (snap) => {
        if (!snap.exists()) { setStep('JOIN'); return; }
        const data = snap.data();
@@ -438,19 +493,29 @@ const PlayerApp = ({ user, onBack }) => {
 
   const joinGame = async () => {
     setErrorMsg('');
-    // FIX: Updated path to match Host (4 segments)
-    const ref = doc(db, 'artifacts', appId, 'sessions', pin);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-        setErrorMsg("Game not found. Check PIN.");
-        return;
+    setIsJoining(true);
+    try {
+      // Path: artifacts/{appId}/sessions/{pin}
+      const ref = doc(db, 'artifacts', appId, 'sessions', pin);
+      const snap = await getDoc(ref);
+      
+      if (!snap.exists()) {
+          setErrorMsg("Game not found. Check PIN.");
+          setIsJoining(false);
+          return;
+      }
+      
+      // Initial Player Record
+      await updateDoc(ref, {
+        [`players.${user.uid}`]: { nickname, score: 0, lastAnswerIdx: null, photo: user.photoURL }
+      });
+      setStep('LOBBY');
+    } catch (e) {
+      console.error(e);
+      setErrorMsg("Error: " + e.message);
+    } finally {
+      setIsJoining(false);
     }
-    
-    // Initial Player Record
-    await updateDoc(ref, {
-      [`players.${user.uid}`]: { nickname, score: 0, lastAnswerIdx: null, photo: user.photoURL }
-    });
-    setStep('LOBBY');
   };
 
   const submitAnswer = async (idx) => {
@@ -500,9 +565,9 @@ const PlayerApp = ({ user, onBack }) => {
       <div className="bg-white p-8 rounded-2xl shadow border border-[#DADCE0] space-y-6">
         <h2 className="text-2xl font-bold">Join Game</h2>
         <Input label="Game PIN" value={pin} onChange={setPin} type="tel" placeholder="000000" />
-        {errorMsg && <p className="text-[#EA4335] text-sm font-bold">{errorMsg}</p>}
+        {errorMsg && <p className="text-[#EA4335] text-sm font-bold bg-red-50 p-2 rounded">{errorMsg}</p>}
         <Input label="Nickname" value={nickname} onChange={setNickname} />
-        <Button onClick={joinGame} className="w-full">Enter</Button>
+        <Button onClick={joinGame} className="w-full" loading={isJoining}>Enter</Button>
       </div>
     </div>
   );
