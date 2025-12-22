@@ -520,43 +520,27 @@ const PlayerApp = ({ user, onBack }) => {
     console.log(`[joinGame] 🔍 Looking for game ${cleanPin}`);
 
     try {
-      console.log('[joinGame] Enabling network...');
-      await enableNetwork(db);
-      console.log('[joinGame] Network enabled.');
-      
       const ref = doc(db, 'artifacts', appId, 'sessions', cleanPin);
       console.log('[joinGame] Getting document...');
-      const unsubscribe = onSnapshot(ref, (snap) => {
-        unsubscribe();
-        console.log('[joinGame] Document snapshot received via onSnapshot:', snap.exists());
-        if (!snap.exists()) {
-            console.warn("[joinGame] ❌ Game not found");
-            setErrorMsg("Game not found. Please check the PIN.");
-            setDebugStatus('Game not found.');
-            setIsJoining(false);
-            return;
-        }
-        
-        setDebugStatus('Game found. Registering player...');
-        console.log("[joinGame] ✅ Game found. Registering...");
-        
-        updateDoc(ref, {
-          [`players.${user.uid}`]: { nickname, score: 0, lastAnswerIdx: null, photo: user.photoURL }
-        }).then(() => {
-          console.log("[joinGame] 🚀 Registered. Entering Lobby.");
-          setStep('LOBBY');
-        }).catch((e) => {
-          console.error("🔥 [joinGame] Error updating document:", e);
-          setErrorMsg("Connection Error: " + e.message);
-          setDebugStatus('Failed to connect.');
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+          console.warn("[joinGame] ❌ Game not found");
+          setErrorMsg("Game not found. Please check the PIN.");
+          setDebugStatus('Game not found.');
           setIsJoining(false);
-        });
-      }, (e) => {
-        console.error("🔥 [joinGame] onSnapshot Error:", e);
-        setErrorMsg("Connection Error: " + e.message);
-        setDebugStatus('Failed to connect.');
-        setIsJoining(false);
+          return;
+      }
+      
+      setDebugStatus('Game found. Registering player...');
+      console.log("[joinGame] ✅ Game found. Registering...");
+      
+      await updateDoc(ref, {
+        [`players.${user.uid}`]: { nickname, score: 0, lastAnswerIdx: null, photo: user.photoURL }
       });
+
+      console.log("[joinGame] 🚀 Registered. Entering Lobby.");
+      setStep('LOBBY');
       
     } catch (e) {
       console.error("🔥 [joinGame] Error:", e);
