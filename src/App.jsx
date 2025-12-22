@@ -18,7 +18,8 @@ import {
   addDoc, 
   serverTimestamp,
   increment,
-  deleteDoc
+  deleteDoc,
+  enableNetwork
 } from 'firebase/firestore';
 import { 
   Users, Plus, Trash2, LogOut, LayoutGrid, 
@@ -240,7 +241,7 @@ const HostApp = ({ user, onBack }) => {
       setSubView('DASHBOARD');
     } catch (error) {
       console.error("Save Error:", error);
-      throw error; // Propagate to child
+      throw error;
     }
   };
 
@@ -300,7 +301,6 @@ const QuizEditor = ({ initialData, onSave, onCancel }) => {
       setIsSaving(true);
       try {
         await onSave(quiz);
-        // Parent unmounts us on success, so we don't need to stop loading
       } catch (error) {
         alert("Failed to save: " + error.message);
         setIsSaving(false);
@@ -476,44 +476,92 @@ const PlayerApp = ({ user, onBack }) => {
   const [hasAnswered, setHasAnswered] = useState(false);
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [debugStatus, setDebugStatus] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
+  // FIX: Only listen when we are NOT in JOIN state and PIN is valid
   useEffect(() => {
     if (step === 'JOIN') return;
-    return onSnapshot(doc(db, 'artifacts', appId, 'sessions', pin), (snap) => {
-       if (!snap.exists()) { setStep('JOIN'); return; }
+    const cleanPin = pin.trim();
+    if (!cleanPin) return; // Prevent listening to empty paths
+
+    console.log("📡 PlayerApp: Attaching listener to", cleanPin);
+    return onSnapshot(doc(db, 'artifacts', appId, 'sessions', cleanPin), (snap) => {
+       if (!snap.exists()) { 
+           console.warn("⚠️ PlayerApp: Document vanished. Returning to JOIN.");
+           setStep('JOIN'); 
+           return; 
+       }
        const data = snap.data();
        setSession(data);
        if (data.status === 'QUESTION' && data.players[user.uid]?.lastAnswerIdx === null) {
           setHasAnswered(false);
           setResult(null);
        }
+    }, (error) => {
+       console.error("🔥 PlayerApp Listener Error:", error);
+       setStep('JOIN');
+       setErrorMsg("Connection lost: " + error.message);
     });
   }, [step, pin]);
 
   const joinGame = async () => {
     setErrorMsg('');
+    setDebugStatus('');
+    const cleanPin = pin.trim();
+    
+    if (!cleanPin || cleanPin.length !== 6) {
+        setErrorMsg("Please enter a valid 6-digit PIN.");
+        return;
+    }
+
     setIsJoining(true);
+    setDebugStatus('Locating game session...');
+    console.log(`[joinGame] 🔍 Looking for game ${cleanPin}`);
+
     try {
-      // Path: artifacts/{appId}/sessions/{pin}
-      const ref = doc(db, 'artifacts', appId, 'sessions', pin);
-      const snap = await getDoc(ref);
+      console.log('[joinGame] Enabling network...');
+      await enableNetwork(db);
+      console.log('[joinGame] Network enabled.');
       
-      if (!snap.exists()) {
-          setErrorMsg("Game not found. Check PIN.");
+      const ref = doc(db, 'artifacts', appId, 'sessions', cleanPin);
+      console.log('[joinGame] Getting document...');
+      const unsubscribe = onSnapshot(ref, (snap) => {
+        unsubscribe();
+        console.log('[joinGame] Document snapshot received via onSnapshot:', snap.exists());
+        if (!snap.exists()) {
+            console.warn("[joinGame] ❌ Game not found");
+            setErrorMsg("Game not found. Please check the PIN.");
+            setDebugStatus('Game not found.');
+            setIsJoining(false);
+            return;
+        }
+        
+        setDebugStatus('Game found. Registering player...');
+        console.log("[joinGame] ✅ Game found. Registering...");
+        
+        updateDoc(ref, {
+          [`players.${user.uid}`]: { nickname, score: 0, lastAnswerIdx: null, photo: user.photoURL }
+        }).then(() => {
+          console.log("[joinGame] 🚀 Registered. Entering Lobby.");
+          setStep('LOBBY');
+        }).catch((e) => {
+          console.error("🔥 [joinGame] Error updating document:", e);
+          setErrorMsg("Connection Error: " + e.message);
+          setDebugStatus('Failed to connect.');
           setIsJoining(false);
-          return;
-      }
-      
-      // Initial Player Record
-      await updateDoc(ref, {
-        [`players.${user.uid}`]: { nickname, score: 0, lastAnswerIdx: null, photo: user.photoURL }
+        });
+      }, (e) => {
+        console.error("🔥 [joinGame] onSnapshot Error:", e);
+        setErrorMsg("Connection Error: " + e.message);
+        setDebugStatus('Failed to connect.');
+        setIsJoining(false);
       });
-      setStep('LOBBY');
+      
     } catch (e) {
-      console.error(e);
-      setErrorMsg("Error: " + e.message);
-    } finally {
+      console.error("🔥 [joinGame] Error:", e);
+      setErrorMsg("Connection Error: " + e.message);
+      setDebugStatus('Failed to connect.');
       setIsJoining(false);
     }
   };
@@ -533,7 +581,8 @@ const PlayerApp = ({ user, onBack }) => {
     setResult({ correct: isCorrect, score: bonus });
 
     // 2. Update Session State
-    const sessionRef = doc(db, 'artifacts', appId, 'sessions', pin);
+    const cleanPin = pin.trim();
+    const sessionRef = doc(db, 'artifacts', appId, 'sessions', cleanPin);
     const updatePayload = {};
     updatePayload[`players.${user.uid}.lastAnswerIdx`] = idx;
     if (isCorrect) updatePayload[`players.${user.uid}.score`] = (session.players[user.uid]?.score || 0) + bonus;
@@ -567,7 +616,11 @@ const PlayerApp = ({ user, onBack }) => {
         <Input label="Game PIN" value={pin} onChange={setPin} type="tel" placeholder="000000" />
         {errorMsg && <p className="text-[#EA4335] text-sm font-bold bg-red-50 p-2 rounded">{errorMsg}</p>}
         <Input label="Nickname" value={nickname} onChange={setNickname} />
+        
         <Button onClick={joinGame} className="w-full" loading={isJoining}>Enter</Button>
+        
+        {/* DEBUG STATUS FOR USER */}
+        {debugStatus && <p className="text-xs text-gray-400 text-center font-mono mt-2">{debugStatus}</p>}
       </div>
     </div>
   );
