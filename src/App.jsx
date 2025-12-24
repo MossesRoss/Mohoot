@@ -5,10 +5,15 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   onAuthStateChanged,
-  signOut
+  signOut,
+  signInAnonymously,
+  updateProfile
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
+  persistentLocalCache, 
+  persistentMultipleTabManager,
   doc, 
   setDoc, 
   getDoc, 
@@ -42,7 +47,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
 const googleProvider = new GoogleAuthProvider();
 const appId = 'mohoot-prod'; 
 
@@ -71,10 +78,13 @@ const Button = ({ children, onClick, variant = 'primary', className = '', disabl
   );
 };
 
-const Input = ({ label, value, onChange, placeholder, type = "text" }) => (
+const Input = ({ label, value, onChange, placeholder, type = "text" }) => {
+  const id = React.useId();
+  return (
   <div className="w-full group">
-    {label && <label className="block text-xs font-bold text-[#5F6368] uppercase tracking-wider mb-2 ml-1">{label}</label>}
+    {label && <label htmlFor={id} className="block text-xs font-bold text-[#5F6368] uppercase tracking-wider mb-2 ml-1">{label}</label>}
     <input 
+      id={id}
       type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -82,7 +92,8 @@ const Input = ({ label, value, onChange, placeholder, type = "text" }) => (
       placeholder={placeholder}
     />
   </div>
-);
+  );
+};
 
 // ==========================================
 // MAIN LOGIC
@@ -152,6 +163,23 @@ export default function App() {
             <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-6 h-6 mr-2 bg-white rounded-full p-0.5" />
             Sign in with Google
           </Button>
+          {import.meta.env.DEV && (
+              <Button onClick={async () => {
+                  try {
+                      const { user: u } = await signInAnonymously(auth);
+                      await updateProfile(u, { 
+                          displayName: 'Dev User', 
+                          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix' 
+                      });
+                      setUser({ ...u, displayName: 'Dev User', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix' });
+                  } catch (e) {
+                      console.error("Dev Login Error (Anon Auth might be disabled):", e);
+                      setUser({ uid: 'dev_user', displayName: 'Dev User', email: 'dev@example.com', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix' });
+                  }
+              }} variant="secondary" className="w-full">
+                  Dev Login (Bypass)
+              </Button>
+          )}
         </div>
       </div>
     );
@@ -208,11 +236,12 @@ export default function App() {
 // HOST APP
 // ==========================================
 
-const HostApp = ({ user, onBack }) => {
+export const HostApp = ({ user, onBack }) => {
   const [subView, setSubView] = useState('DASHBOARD');
   const [quizzes, setQuizzes] = useState([]);
   const [activeQuizId, setActiveQuizId] = useState(null);
   const [editingQuiz, setEditingQuiz] = useState(null);
+  const [restoredPin, setRestoredPin] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -221,6 +250,21 @@ const HostApp = ({ user, onBack }) => {
       setQuizzes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
   }, [user]);
+
+  // Restore state on load
+  useEffect(() => {
+      const saved = localStorage.getItem('mohoot_host_state');
+      if (saved) {
+          try {
+              const { quizId, pin } = JSON.parse(saved);
+              setActiveQuizId(quizId);
+              setRestoredPin(pin);
+              setSubView('LOBBY');
+          } catch (e) {
+              console.error("Failed to restore host state", e);
+          }
+      }
+  }, []);
 
   const createNewQuiz = () => {
     setEditingQuiz({
@@ -245,10 +289,23 @@ const HostApp = ({ user, onBack }) => {
     }
   };
 
+  const launchGame = (quizId) => {
+      setActiveQuizId(quizId);
+      setRestoredPin(null); // Ensure we are starting fresh
+      setSubView('LOBBY');
+  };
+
+  const handleExitGame = () => {
+      localStorage.removeItem('mohoot_host_state');
+      setRestoredPin(null);
+      setActiveQuizId(null);
+      setSubView('DASHBOARD');
+  };
+
   return (
     <div className="max-w-6xl mx-auto pt-20 px-6">
       <div className="flex items-center gap-4 mb-8">
-        <Button variant="secondary" onClick={subView === 'DASHBOARD' ? onBack : () => setSubView('DASHBOARD')}>Back</Button>
+        <Button variant="secondary" onClick={subView === 'DASHBOARD' ? onBack : handleExitGame}>Back</Button>
         <h2 className="text-2xl font-bold text-[#202124]">{subView}</h2>
       </div>
 
@@ -263,7 +320,7 @@ const HostApp = ({ user, onBack }) => {
                 <h3 className="font-bold text-lg mb-2 truncate">{q.title}</h3>
                 <p className="text-sm text-[#5F6368] mb-4">{q.questions?.length} Questions</p>
                 <div className="flex gap-2">
-                  <Button className="flex-1" onClick={() => { setActiveQuizId(q.id); setSubView('LOBBY'); }}>Launch</Button>
+                  <Button className="flex-1" onClick={() => launchGame(q.id)}>Launch</Button>
                   <button onClick={() => { setEditingQuiz(q); setSubView('EDITOR'); }} className="p-2 hover:bg-[#F1F3F4] rounded"><Edit3 size={18} className="text-[#5F6368]"/></button>
                   <button onClick={async () => { if(confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'quizzes', q.id)); }} className="p-2 hover:bg-[#FCE8E6] rounded"><Trash2 size={18} className="text-[#EA4335]"/></button>
                 </div>
@@ -274,7 +331,7 @@ const HostApp = ({ user, onBack }) => {
       )}
 
       {subView === 'EDITOR' && <QuizEditor initialData={editingQuiz} onSave={handleSaveQuiz} onCancel={() => setSubView('DASHBOARD')} />}
-      {subView === 'LOBBY' && <HostGameEngine quizId={activeQuizId} hostId={user.uid} onExit={() => setSubView('DASHBOARD')} allQuizzes={quizzes} />}
+      {subView === 'LOBBY' && <HostGameEngine quizId={activeQuizId} hostId={user.uid} onExit={handleExitGame} allQuizzes={quizzes} restoredPin={restoredPin} />}
     </div>
   );
 };
@@ -293,7 +350,9 @@ const QuizEditor = ({ initialData, onSave, onCancel }) => {
   
   const updateAns = (aIdx, text) => {
     const qs = [...quiz.questions];
-    qs[idx].answers[aIdx] = text;
+    const newAnswers = [...qs[idx].answers];
+    newAnswers[aIdx] = text;
+    qs[idx] = { ...qs[idx], answers: newAnswers };
     setQuiz({ ...quiz, questions: qs });
   };
 
@@ -362,29 +421,49 @@ const QuizEditor = ({ initialData, onSave, onCancel }) => {
 };
 
 // --- HOST GAME ENGINE ---
-const HostGameEngine = ({ quizId, hostId, onExit, allQuizzes }) => {
-  const [pin, setPin] = useState(null);
+const HostGameEngine = ({ quizId, hostId, onExit, allQuizzes, restoredPin }) => {
+  const [pin, setPin] = useState(restoredPin);
   const [session, setSession] = useState(null);
   const [qData, setQData] = useState(null);
 
   useEffect(() => {
     const init = async () => {
       const quiz = allQuizzes.find(q => q.id === quizId);
-      setQData(quiz);
-      const newPin = Math.floor(100000 + Math.random() * 900000).toString();
-      setPin(newPin);
       
-      // Path: artifacts/{appId}/sessions/{pin}
-      await setDoc(doc(db, 'artifacts', appId, 'sessions', newPin), {
-        hostId, quizId, status: 'LOBBY', currentQuestionIndex: 0, players: {}, quizSnapshot: quiz
-      });
+      // If we are restoring, we might need to fetch the quiz if not in allQuizzes (edge case)
+      // For now assume allQuizzes is populated.
+      
+      if (!quiz) return; // Wait for quizzes to load
+      setQData(quiz);
+
+      let currentPin = restoredPin;
+
+      if (!currentPin) {
+          // Generate new session
+          currentPin = Math.floor(100000 + Math.random() * 900000).toString();
+          setPin(currentPin);
+          
+          await setDoc(doc(db, 'artifacts', appId, 'sessions', currentPin), {
+            hostId, quizId, status: 'LOBBY', currentQuestionIndex: 0, players: {}, quizSnapshot: quiz
+          });
+      }
+
+      // Persist locally
+      localStorage.setItem('mohoot_host_state', JSON.stringify({ quizId, pin: currentPin }));
     };
     init();
-  }, []);
+  }, [allQuizzes, quizId, restoredPin]); // Depend on allQuizzes to ensure we find the quiz
 
   useEffect(() => {
     if (!pin) return;
-    return onSnapshot(doc(db, 'artifacts', appId, 'sessions', pin), (s) => setSession(s.data()));
+    return onSnapshot(doc(db, 'artifacts', appId, 'sessions', pin), (s) => {
+        if (s.exists()) {
+            setSession(s.data());
+        } else {
+            // Session deleted?
+            onExit();
+        }
+    });
   }, [pin]);
 
   const updateStatus = async (status, extra = {}) => {
@@ -468,7 +547,7 @@ const HostGameEngine = ({ quizId, hostId, onExit, allQuizzes }) => {
 // PLAYER APP
 // ==========================================
 
-const PlayerApp = ({ user, onBack }) => {
+export const PlayerApp = ({ user, onBack }) => {
   const [step, setStep] = useState('JOIN');
   const [pin, setPin] = useState('');
   const [nickname, setNickname] = useState(user.displayName || '');
@@ -478,6 +557,16 @@ const PlayerApp = ({ user, onBack }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [debugStatus, setDebugStatus] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+
+  // Auto-rejoin on mount
+  useEffect(() => {
+      const savedPin = localStorage.getItem('mohoot_player_pin');
+      if (savedPin) {
+          setPin(savedPin);
+          // Small delay to ensure state is set
+          joinGameInternal(savedPin, nickname); 
+      }
+  }, []);
 
   // FIX: Only listen when we are NOT in JOIN state and PIN is valid
   useEffect(() => {
@@ -489,7 +578,7 @@ const PlayerApp = ({ user, onBack }) => {
     return onSnapshot(doc(db, 'artifacts', appId, 'sessions', cleanPin), (snap) => {
        if (!snap.exists()) { 
            console.warn("⚠️ PlayerApp: Document vanished. Returning to JOIN.");
-           setStep('JOIN'); 
+           handleBack(); 
            return; 
        }
        const data = snap.data();
@@ -500,54 +589,99 @@ const PlayerApp = ({ user, onBack }) => {
        }
     }, (error) => {
        console.error("🔥 PlayerApp Listener Error:", error);
-       setStep('JOIN');
+       handleBack();
        setErrorMsg("Connection lost: " + error.message);
     });
   }, [step, pin]);
 
-  const joinGame = async () => {
-    setErrorMsg('');
-    setDebugStatus('');
-    const cleanPin = pin.trim();
-    
-    if (!cleanPin || cleanPin.length !== 6) {
-        setErrorMsg("Please enter a valid 6-digit PIN.");
-        return;
-    }
+  const joinGameInternal = async (targetPin, targetNickname) => {
+      setErrorMsg('');
+      setDebugStatus('');
 
-    setIsJoining(true);
-    setDebugStatus('Locating game session...');
-    console.log(`[joinGame] 🔍 Looking for game ${cleanPin}`);
+      if (!navigator.onLine) {
+         setErrorMsg("You are offline. Please check your internet connection.");
+         return;
+      }
 
-    try {
-      const ref = doc(db, 'artifacts', appId, 'sessions', cleanPin);
-      console.log('[joinGame] Getting document...');
-      const snap = await getDoc(ref);
-
-      if (!snap.exists()) {
-          console.warn("[joinGame] ❌ Game not found");
-          setErrorMsg("Game not found. Please check the PIN.");
-          setDebugStatus('Game not found.');
-          setIsJoining(false);
+      const cleanPin = targetPin.trim();
+      
+      if (!cleanPin || cleanPin.length !== 6) {
+          setErrorMsg("Please enter a valid 6-digit PIN.");
           return;
       }
-      
-      setDebugStatus('Game found. Registering player...');
-      console.log("[joinGame] ✅ Game found. Registering...");
-      
-      await updateDoc(ref, {
-        [`players.${user.uid}`]: { nickname, score: 0, lastAnswerIdx: null, photo: user.photoURL }
-      });
+  
+      setIsJoining(true);
+      setDebugStatus('Locating game session...');
+      console.log(`[joinGame] 🔍 Looking for game ${cleanPin}`);
+  
+      try {
+        const ref = doc(db, 'artifacts', appId, 'sessions', cleanPin);
+        console.log('[joinGame] Getting document...');
+        const snap = await getDoc(ref);
+  
+        if (!snap.exists()) {
+            console.warn("[joinGame] ❌ Game not found");
+            setErrorMsg("Game not found. Please check the PIN.");
+            setDebugStatus('Game not found.');
+            setIsJoining(false);
+            // If we were trying to auto-rejoin, clear storage
+            localStorage.removeItem('mohoot_player_pin');
+            return;
+        }
+        
+        setDebugStatus('Game found. Registering player...');
+        console.log("[joinGame] ✅ Game found. Registering...");
+        
+        // Only register if not already in (or update info)
+        const currentPlayers = snap.data().players || {};
+        const existingPlayer = currentPlayers[user.uid];
+        
+        const playerData = {
+            nickname: targetNickname,
+            photo: user.photoURL || null,
+            lastAnswerIdx: null,
+            score: existingPlayer ? (existingPlayer.score || 0) : 0
+        };
 
-      console.log("[joinGame] 🚀 Registered. Entering Lobby.");
-      setStep('LOBBY');
-      
-    } catch (e) {
-      console.error("🔥 [joinGame] Error:", e);
-      setErrorMsg("Connection Error: " + e.message);
-      setDebugStatus('Failed to connect.');
-      setIsJoining(false);
-    }
+        // Create a timeout promise
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("UpdateDoc timed out")), 5000)
+        );
+
+        try {
+            await Promise.race([
+                updateDoc(ref, { [`players.${user.uid}`]: playerData }),
+                timeoutPromise
+            ]);
+        } catch (updateError) {
+            console.warn("[joinGame] UpdateDoc warning (proceeding anyway):", updateError);
+            // If it's a timeout or permission error, we might still want to proceed locally
+            // especially for Dev User.
+        }
+  
+        console.log("[joinGame] 🚀 Registered. Entering Lobby.");
+        
+        localStorage.setItem('mohoot_player_pin', cleanPin);
+        setStep('LOBBY');
+        
+      } catch (e) {
+        console.error("🔥 [joinGame] Error:", e);
+        let msg = "Connection Error: " + e.message;
+        if (e.message.includes("offline")) {
+            msg = "You are offline. Please check your connection.";
+        }
+        setErrorMsg(msg);
+        setDebugStatus('Failed to connect.');
+        setIsJoining(false);
+      }
+  };
+
+  const joinGame = () => joinGameInternal(pin, nickname);
+
+  const handleBack = () => {
+      localStorage.removeItem('mohoot_player_pin');
+      setStep('JOIN');
+      onBack();
   };
 
   const submitAnswer = async (idx) => {
@@ -594,7 +728,7 @@ const PlayerApp = ({ user, onBack }) => {
 
   if (step === 'JOIN') return (
     <div className="max-w-md mx-auto pt-20 p-6">
-      <Button variant="secondary" onClick={onBack} className="mb-8">Back</Button>
+      <Button variant="secondary" onClick={handleBack} className="mb-8">Back</Button>
       <div className="bg-white p-8 rounded-2xl shadow border border-[#DADCE0] space-y-6">
         <h2 className="text-2xl font-bold">Join Game</h2>
         <Input label="Game PIN" value={pin} onChange={setPin} type="tel" placeholder="000000" />

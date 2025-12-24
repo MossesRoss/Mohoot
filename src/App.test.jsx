@@ -5,7 +5,7 @@ import App from './App';
 describe('App', () => {
   it('renders headline', () => {
     render(<App />);
-    const headline = screen.getByText(/Mohoot!/i);
-    expect(headline).toBeInTheDocument();
+    const headline = screen.getByRole('heading', { level: 1 });
+    expect(headline).toHaveTextContent(/Mohoot!/i);
   });
 });
