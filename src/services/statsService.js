@@ -1,54 +1,50 @@
-const STORAGE_KEY = 'mohoot_player_stats';
-
-const DEFAULT_STATS = {
-  totalGamesPlayed: 0,
-  totalGamesWon: 0,
-  totalQuestionsAnswered: 0,
-  totalCorrectAnswers: 0,
-  totalIncorrectAnswers: 0,
-  totalScore: 0,
-};
+import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 
 export const StatsService = {
-  // Load stats from local storage
-  loadStats: () => {
+  // Load stats from Firestore
+  loadStats: async (db, appId, userId) => {
+    if (!userId) return null;
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? { ...DEFAULT_STATS, ...JSON.parse(stored) } : DEFAULT_STATS;
+      const ref = doc(db, 'artifacts', appId, 'users', userId, 'playerStats', 'summary');
+      const snap = await getDoc(ref);
+      
+      const defaultStats = {
+        totalGamesPlayed: 0,
+        totalGamesWon: 0,
+        totalQuestionsAnswered: 0,
+        totalCorrectAnswers: 0,
+        totalIncorrectAnswers: 0,
+        totalScore: 0,
+      };
+
+      if (snap.exists()) {
+        return { ...defaultStats, ...snap.data() };
+      } else {
+        return defaultStats;
+      }
     } catch (e) {
       console.error("Failed to load stats", e);
-      return DEFAULT_STATS;
+      return null;
     }
   },
 
-  // Save stats to local storage
-  saveStats: (stats) => {
+  // Update specific fields atomically
+  updateStats: async (db, appId, userId, updates) => {
+    if (!userId) return;
+    const ref = doc(db, 'artifacts', appId, 'users', userId, 'playerStats', 'summary');
+    
+    const firestoreUpdates = {};
+    if (updates.incrementGamesPlayed) firestoreUpdates.totalGamesPlayed = increment(1);
+    if (updates.incrementGamesWon) firestoreUpdates.totalGamesWon = increment(1);
+    if (updates.incrementQuestionsAnswered) firestoreUpdates.totalQuestionsAnswered = increment(1);
+    if (updates.incrementCorrectAnswers) firestoreUpdates.totalCorrectAnswers = increment(1);
+    if (updates.incrementIncorrectAnswers) firestoreUpdates.totalIncorrectAnswers = increment(1);
+    if (updates.addScore) firestoreUpdates.totalScore = increment(updates.addScore);
+
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+      await setDoc(ref, firestoreUpdates, { merge: true });
     } catch (e) {
       console.error("Failed to save stats", e);
     }
-  },
-
-  // Update specific fields
-  updateStats: (updates) => {
-    const current = StatsService.loadStats();
-    const newStats = { ...current };
-
-    if (updates.incrementGamesPlayed) newStats.totalGamesPlayed++;
-    if (updates.incrementGamesWon) newStats.totalGamesWon++;
-    if (updates.incrementQuestionsAnswered) newStats.totalQuestionsAnswered++;
-    if (updates.incrementCorrectAnswers) newStats.totalCorrectAnswers++;
-    if (updates.incrementIncorrectAnswers) newStats.totalIncorrectAnswers++;
-    if (updates.addScore) newStats.totalScore += updates.addScore;
-
-    StatsService.saveStats(newStats);
-    return newStats;
-  },
-  
-  // Clear stats (for testing or user reset)
-  clearStats: () => {
-    localStorage.removeItem(STORAGE_KEY);
-    return DEFAULT_STATS;
   }
 };

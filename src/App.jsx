@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import {
   getFirestore, initializeFirestore, persistentLocalCache,
   persistentMultipleTabManager, doc, getDoc, updateDoc,
@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import {
   CheckCircle2, XCircle, Loader2, Triangle, Hexagon, Circle, Square,
-  LogOut, Zap, Trophy, User
+  LogOut, Zap, Trophy, User, Play
 } from 'lucide-react';
 import { StatsService } from './services/statsService';
 
@@ -57,13 +57,19 @@ const Button = ({ children, onClick, className = '', disabled = false }) => (
   </button>
 );
 
-const StatsView = ({ onBack }) => {
-  const stats = StatsService.loadStats();
+const StatsView = ({ onBack, db, userId }) => {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    StatsService.loadStats(db, appId, userId).then(setStats);
+  }, [db, userId]);
+
+  if (!stats) return <div className="h-full flex items-center justify-center text-indigo-500"><Loader2 className="animate-spin" /></div>;
   
   return (
     <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center p-6 font-sans text-white`}>
-       <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl relative`}>
-         <button onClick={onBack} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+       <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl relative animate-in zoom-in duration-300`}>
+         <button onClick={onBack} className="absolute top-4 right-4 text-slate-400 hover:text-white transition">
            <XCircle size={24} />
          </button>
          <h2 className="text-3xl font-black mb-6 text-center text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">My Stats</h2>
@@ -106,6 +112,7 @@ export default function PlayerApp() {
   const [nickname, setNickname] = useState('');
   const [session, setSession] = useState(null);
   const [showStats, setShowStats] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Game State
   const [hasAnswered, setHasAnswered] = useState(false);
@@ -120,14 +127,24 @@ export default function PlayerApp() {
 
   // 1. Auth Listener
   useEffect(() => {
-    signInAnonymously(auth).catch(console.error);
-    return onAuthStateChanged(auth, u => {
-      if (u) {
-        setUser(u);
-        if (u.displayName) setNickname(u.displayName);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser?.displayName) {
+        setNickname(currentUser.displayName);
       }
+      setLoading(false);
     });
+    return () => unsubscribe();
   }, []);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (error) {
+      console.error("Login failed:", error);
+      setErrorMsg(error.message);
+    }
+  };
 
   // 2. Auto-Rejoin
   useEffect(() => {
@@ -138,18 +155,17 @@ export default function PlayerApp() {
     }
   }, [user]);
 
-  // 3. CORE SYNC LOGIC (The Fix: Decoupled from Logic)
+  // 3. CORE SYNC LOGIC
   useEffect(() => {
     if (step === 'JOIN' || !pin || !user) return;
 
-    // Only subscribe to the DOC. Do not depend on roundId here.
     const unsub = onSnapshot(doc(db, 'artifacts', appId, 'sessions', pin), (snap) => {
       if (!snap.exists()) {
         handleBack();
         setErrorMsg("Host ended the game.");
         return;
       }
-      setSession(snap.data()); // Just sync data. Logic handled in next effect.
+      setSession(snap.data()); 
     }, (err) => {
       console.error(err);
       handleBack();
@@ -157,36 +173,30 @@ export default function PlayerApp() {
     });
 
     return () => unsub();
-  }, [step, pin, user]); // Removed currentRoundId from dependencies
+  }, [step, pin, user]); 
 
-  // 4. LOGIC HANDLER (Reacts to Session Updates)
+  // 4. LOGIC HANDLER
   useEffect(() => {
     if (!session || !user) return;
 
-    // Detect New Round
     if (session.roundId !== undefined && session.roundId !== currentRoundId) {
       setCurrentRoundId(session.roundId);
       setHasAnswered(false);
       setResult(null);
     }
 
-    // Refresh Protection
     const myData = session.players[user.uid];
     if (myData?.lastAnsweredRoundId === session.roundId) {
       setHasAnswered(true);
     }
     
-    // Stats: Game Finished Logic
     if (session.status === 'FINISHED' && !gameProcessed) {
       setGameProcessed(true);
       const players = Object.values(session.players || {});
       const sorted = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
-      const myRank = sorted.findIndex(p => p.nickname === nickname); // Approximation by nickname/score since uid might not be in sorted array cleanly if object values
-      // Better: find by score since we have myData
-      
       const amIWinner = sorted.length > 0 && session.players[user.uid]?.score === sorted[0].score;
 
-      StatsService.updateStats({
+      StatsService.updateStats(db, appId, user.uid, {
         incrementGamesPlayed: true,
         incrementGamesWon: amIWinner
       });
@@ -220,19 +230,18 @@ export default function PlayerApp() {
       await updateDoc(ref, { [`players.${user.uid}`]: playerData });
       localStorage.setItem('mohoot_player_pin', targetPin);
 
-      // Clear previous game state explicitly before entering lobby
       setSession(null);
       setCurrentRoundId(null);
       setResult(null);
       setHasAnswered(false);
-      setGameProcessed(false); // Reset stats tracking for new game
+      setGameProcessed(false); 
 
       setStep('LOBBY');
     } catch (e) {
       setErrorMsg(e.message);
       localStorage.removeItem('mohoot_player_pin');
     } finally {
-      setIsJoining(false); // Ensure loader turns off
+      setIsJoining(false); 
     }
   };
 
@@ -245,7 +254,6 @@ export default function PlayerApp() {
     setCurrentRoundId(null);
     setGameProcessed(false);
     setIsJoining(false);
-    // Note: We keep the PIN in the input for convenience, or you can clear it with setPin('')
   };
 
   const submitAnswer = async (idx) => {
@@ -260,8 +268,8 @@ export default function PlayerApp() {
     const bonus = isCorrect ? Math.round(500 + (500 * (Math.max(0, timeLeft) / duration))) : 0;
     setResult({ correct: isCorrect, score: bonus });
 
-    // Update Local Stats
-    StatsService.updateStats({
+    // Update Firestore Stats
+    StatsService.updateStats(db, appId, user.uid, {
         incrementQuestionsAnswered: true,
         incrementCorrectAnswers: isCorrect,
         incrementIncorrectAnswers: !isCorrect,
@@ -281,22 +289,59 @@ export default function PlayerApp() {
     await updateDoc(sessionRef, updatePayload);
   };
 
-  if (!user) return <div className={`${COLORS.bg} h-screen flex items-center justify-center`}><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
+  if (loading) return <div className={`${COLORS.bg} h-screen flex items-center justify-center`}><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
 
-  if (showStats) return <StatsView onBack={() => setShowStats(false)} />;
+  if (!user) {
+    return (
+      <div className={`min-h-screen ${COLORS.bg} flex flex-col items-center justify-center p-6 font-sans`}>
+        <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-10 rounded-3xl shadow-2xl text-center animate-in fade-in zoom-in duration-500`}>
+          <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-tighter mb-4">Mohoot!</h1>
+          <p className="text-slate-400 font-medium mb-10 text-sm uppercase tracking-widest">Player Zone</p>
+
+          <button
+            onClick={handleLogin}
+            className="w-full flex items-center justify-center gap-4 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-900 font-bold py-4 px-6 rounded-2xl transition-all group"
+          >
+            <svg className="w-6 h-6 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" fill="#FBBC05" />
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+            </svg>
+            Login with Google
+          </button>
+          
+          {errorMsg && (
+            <div className="mt-4 text-rose-400 text-xs font-bold bg-rose-500/10 p-2 rounded-lg">{errorMsg}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (showStats) return <StatsView onBack={() => setShowStats(false)} db={db} userId={user.uid} />;
 
   // --- JOIN SCREEN ---
   if (step === 'JOIN') return (
     <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center p-6 font-sans relative`}>
-      <button 
-        onClick={() => setShowStats(true)} 
-        className="absolute top-6 right-6 p-3 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-indigo-600 transition-all shadow-lg"
-        title="My Stats"
-      >
-        <User size={24} />
-      </button>
+      <div className="absolute top-6 right-6 flex gap-2">
+        <button 
+          onClick={() => setShowStats(true)} 
+          className="p-3 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-indigo-600 transition-all shadow-lg"
+          title="My Stats"
+        >
+          <User size={24} />
+        </button>
+        <button 
+          onClick={() => signOut(auth)} 
+          className="p-3 bg-slate-800 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-700 transition-all shadow-lg"
+          title="Sign Out"
+        >
+          <LogOut size={24} />
+        </button>
+      </div>
 
-      <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl space-y-8`}>
+      <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl space-y-8 animate-in fade-in duration-500`}>
 
         <div className="text-center">
           <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-tighter mb-2">Mohoot!</h1>

@@ -1,15 +1,33 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { StatsService } from './statsService';
+import { increment } from 'firebase/firestore';
 
-describe('StatsService', () => {
+// Mock Firestore
+const mockDb = {};
+const mockAppId = 'app1';
+const mockUserId = 'user1';
+
+// We need to mock the firebase/firestore module imports used in StatsService
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn((db, ...path) => ({ path: path.join('/') })),
+  getDoc: vi.fn(),
+  setDoc: vi.fn(),
+  updateDoc: vi.fn(),
+  increment: vi.fn((val) => ({ type: 'increment', value: val })),
+}));
+
+import { getDoc, setDoc } from 'firebase/firestore';
+
+describe('StatsService (Firestore)', () => {
   beforeEach(() => {
-    // Clear localStorage before each test
-    localStorage.clear();
     vi.clearAllMocks();
   });
 
-  it('should return default stats when no data exists', () => {
-    const stats = StatsService.loadStats();
+  it('should return default stats when no data exists', async () => {
+    getDoc.mockResolvedValue({ exists: () => false });
+
+    const stats = await StatsService.loadStats(mockDb, mockAppId, mockUserId);
+    
     expect(stats).toEqual({
       totalGamesPlayed: 0,
       totalGamesWon: 0,
@@ -20,56 +38,35 @@ describe('StatsService', () => {
     });
   });
 
-  it('should save and load stats correctly', () => {
-    const newStats = {
+  it('should load existing stats', async () => {
+    const existingData = {
       totalGamesPlayed: 5,
-      totalGamesWon: 2,
-      totalQuestionsAnswered: 50,
-      totalCorrectAnswers: 40,
-      totalIncorrectAnswers: 10,
-      totalScore: 1000,
+      totalScore: 100
     };
-    StatsService.saveStats(newStats);
-    const loaded = StatsService.loadStats();
-    expect(loaded).toEqual(newStats);
-  });
-
-  it('should update stats correctly', () => {
-    StatsService.saveStats({
-      totalGamesPlayed: 1,
-      totalGamesWon: 0,
-      totalQuestionsAnswered: 10,
-      totalCorrectAnswers: 5,
-      totalIncorrectAnswers: 5,
-      totalScore: 500,
+    getDoc.mockResolvedValue({ 
+      exists: () => true, 
+      data: () => existingData 
     });
 
-    const updated = StatsService.updateStats({
+    const stats = await StatsService.loadStats(mockDb, mockAppId, mockUserId);
+    
+    expect(stats).toMatchObject(existingData);
+    expect(stats.totalGamesWon).toBe(0); // Default for missing field
+  });
+
+  it('should update stats using atomic increments', async () => {
+    await StatsService.updateStats(mockDb, mockAppId, mockUserId, {
       incrementGamesPlayed: true,
-      incrementGamesWon: true,
-      incrementQuestionsAnswered: true,
-      incrementCorrectAnswers: true,
-      addScore: 100,
+      addScore: 500
     });
 
-    expect(updated).toEqual({
-      totalGamesPlayed: 2,
-      totalGamesWon: 1,
-      totalQuestionsAnswered: 11,
-      totalCorrectAnswers: 6,
-      totalIncorrectAnswers: 5,
-      totalScore: 600,
-    });
-  });
-
-  it('should handle partial updates (incorrect answer)', () => {
-    const updated = StatsService.updateStats({
-      incrementQuestionsAnswered: true,
-      incrementIncorrectAnswers: true,
-    });
-
-    expect(updated.totalQuestionsAnswered).toBe(1);
-    expect(updated.totalIncorrectAnswers).toBe(1);
-    expect(updated.totalCorrectAnswers).toBe(0);
+    expect(setDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: `artifacts/${mockAppId}/users/${mockUserId}/playerStats/summary` }),
+      {
+        totalGamesPlayed: { type: 'increment', value: 1 },
+        totalScore: { type: 'increment', value: 500 }
+      },
+      { merge: true }
+    );
   });
 });
