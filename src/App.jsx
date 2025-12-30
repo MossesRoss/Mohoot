@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import {
@@ -6,11 +6,14 @@ import {
   persistentMultipleTabManager, doc, getDoc, updateDoc,
   onSnapshot
 } from 'firebase/firestore';
-import { CheckCircle2, XCircle, Loader2, Triangle, Hexagon, Circle, Square } from 'lucide-react';
+import {
+  CheckCircle2, XCircle, Loader2, Triangle, Hexagon, Circle, Square,
+  LogOut, Zap, Trophy, User
+} from 'lucide-react';
+import { StatsService } from './services/statsService';
 
 // --- CONFIG ---
-// Ensure your .env file has these VITE_FIREBASE_... keys
-const firebaseConfig = {
+const envConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -19,23 +22,82 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
+const firebaseConfig = (typeof __firebase_config !== 'undefined')
+  ? JSON.parse(__firebase_config)
+  : envConfig;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const appId = 'mohoot-prod';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'mohoot-prod';
 
-const SHAPES = [
-  { id: 0, color: 'bg-[#EA4335]', icon: Triangle },
-  { id: 1, color: 'bg-[#4285F4]', icon: Hexagon },
-  { id: 2, color: 'bg-[#FBBC04]', icon: Circle },
-  { id: 3, color: 'bg-[#34A853]', icon: Square },
-];
+// --- AESTHETICS: "Cosmic Night" Theme ---
+const COLORS = {
+  bg: 'bg-slate-900', // Deep dark base
+  card: 'bg-slate-800/50', // Glassmorphism card
+  primary: 'bg-indigo-600 hover:bg-indigo-500', // Primary Action
+  accent: 'text-cyan-400', // Highlights
+  text: 'text-white',
+  input: 'bg-slate-950 border-slate-700 text-white focus:border-indigo-500',
+  shapes: [
+    { id: 0, color: 'bg-rose-600', hover: 'hover:bg-rose-500', icon: Triangle },
+    { id: 1, color: 'bg-blue-600', hover: 'hover:bg-blue-500', icon: Hexagon },
+    { id: 2, color: 'bg-amber-500', hover: 'hover:bg-amber-400', icon: Circle },
+    { id: 3, color: 'bg-emerald-600', hover: 'hover:bg-emerald-500', icon: Square },
+  ]
+};
 
 const Button = ({ children, onClick, className = '', disabled = false }) => (
-  <button onClick={onClick} disabled={disabled} className={`active:scale-95 transition-all flex items-center justify-center font-bold shadow-md rounded-xl ${className}`}>
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`active:scale-95 transition-all flex items-center justify-center font-bold shadow-lg rounded-2xl ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+  >
     {children}
   </button>
 );
+
+const StatsView = ({ onBack }) => {
+  const stats = StatsService.loadStats();
+  
+  return (
+    <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center p-6 font-sans text-white`}>
+       <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl relative`}>
+         <button onClick={onBack} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+           <XCircle size={24} />
+         </button>
+         <h2 className="text-3xl font-black mb-6 text-center text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">My Stats</h2>
+         
+         <div className="space-y-4">
+           <div className="flex justify-between items-center p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+             <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">Games Played</span>
+             <span className="text-2xl font-black">{stats.totalGamesPlayed}</span>
+           </div>
+           <div className="flex justify-between items-center p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+             <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">Games Won 🏆</span>
+             <span className="text-2xl font-black text-yellow-400">{stats.totalGamesWon}</span>
+           </div>
+           
+           <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-emerald-900/20 rounded-xl border border-emerald-500/20 text-center">
+                 <div className="text-2xl font-black text-emerald-400">{stats.totalCorrectAnswers}</div>
+                 <div className="text-[10px] uppercase font-bold text-emerald-600">Correct</div>
+              </div>
+              <div className="p-4 bg-rose-900/20 rounded-xl border border-rose-500/20 text-center">
+                 <div className="text-2xl font-black text-rose-400">{stats.totalIncorrectAnswers}</div>
+                 <div className="text-[10px] uppercase font-bold text-rose-600">Incorrect</div>
+              </div>
+           </div>
+
+           <div className="flex justify-between items-center p-4 bg-indigo-900/20 rounded-xl border border-indigo-500/20">
+             <span className="text-indigo-400 font-bold uppercase text-xs tracking-wider">Total Score</span>
+             <span className="text-2xl font-black text-indigo-300">{stats.totalScore}</span>
+           </div>
+         </div>
+       </div>
+    </div>
+  );
+};
 
 export default function PlayerApp() {
   const [user, setUser] = useState(null);
@@ -43,12 +105,20 @@ export default function PlayerApp() {
   const [pin, setPin] = useState('');
   const [nickname, setNickname] = useState('');
   const [session, setSession] = useState(null);
+  const [showStats, setShowStats] = useState(false);
+
+  // Game State
   const [hasAnswered, setHasAnswered] = useState(false);
+  const [currentRoundId, setCurrentRoundId] = useState(null);
   const [result, setResult] = useState(null);
+  
+  // Track game completion to prevent double counting
+  const [gameProcessed, setGameProcessed] = useState(false);
+
   const [errorMsg, setErrorMsg] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
-  // Anon Auth for Player
+  // 1. Auth Listener
   useEffect(() => {
     signInAnonymously(auth).catch(console.error);
     return onAuthStateChanged(auth, u => {
@@ -59,7 +129,7 @@ export default function PlayerApp() {
     });
   }, []);
 
-  // Rejoin Logic
+  // 2. Auto-Rejoin
   useEffect(() => {
     const savedPin = localStorage.getItem('mohoot_player_pin');
     if (savedPin && user) {
@@ -68,23 +138,61 @@ export default function PlayerApp() {
     }
   }, [user]);
 
-  // Game Sync Listener
+  // 3. CORE SYNC LOGIC (The Fix: Decoupled from Logic)
   useEffect(() => {
-    if (step === 'JOIN' || !pin) return;
-    return onSnapshot(doc(db, 'artifacts', appId, 'sessions', pin), (snap) => {
-      if (!snap.exists()) { handleBack(); return; }
-      const data = snap.data();
-      setSession(data);
-      if (data.status === 'QUESTION' && data.players[user.uid]?.lastAnswerIdx === null) {
-        setHasAnswered(false);
-        setResult(null);
+    if (step === 'JOIN' || !pin || !user) return;
+
+    // Only subscribe to the DOC. Do not depend on roundId here.
+    const unsub = onSnapshot(doc(db, 'artifacts', appId, 'sessions', pin), (snap) => {
+      if (!snap.exists()) {
+        handleBack();
+        setErrorMsg("Host ended the game.");
+        return;
       }
+      setSession(snap.data()); // Just sync data. Logic handled in next effect.
     }, (err) => {
       console.error(err);
       handleBack();
       setErrorMsg("Connection lost.");
     });
-  }, [step, pin, user]);
+
+    return () => unsub();
+  }, [step, pin, user]); // Removed currentRoundId from dependencies
+
+  // 4. LOGIC HANDLER (Reacts to Session Updates)
+  useEffect(() => {
+    if (!session || !user) return;
+
+    // Detect New Round
+    if (session.roundId !== undefined && session.roundId !== currentRoundId) {
+      setCurrentRoundId(session.roundId);
+      setHasAnswered(false);
+      setResult(null);
+    }
+
+    // Refresh Protection
+    const myData = session.players[user.uid];
+    if (myData?.lastAnsweredRoundId === session.roundId) {
+      setHasAnswered(true);
+    }
+    
+    // Stats: Game Finished Logic
+    if (session.status === 'FINISHED' && !gameProcessed) {
+      setGameProcessed(true);
+      const players = Object.values(session.players || {});
+      const sorted = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
+      const myRank = sorted.findIndex(p => p.nickname === nickname); // Approximation by nickname/score since uid might not be in sorted array cleanly if object values
+      // Better: find by score since we have myData
+      
+      const amIWinner = sorted.length > 0 && session.players[user.uid]?.score === sorted[0].score;
+
+      StatsService.updateStats({
+        incrementGamesPlayed: true,
+        incrementGamesWon: amIWinner
+      });
+    }
+
+  }, [session, currentRoundId, user, gameProcessed, nickname]);
 
   const joinGameInternal = async (targetPin, targetName) => {
     if (!user || !targetPin) return;
@@ -96,24 +204,35 @@ export default function PlayerApp() {
 
       if (!snap.exists()) throw new Error("Game not found");
 
-      // Update nickname in Auth and DB
       if (user.displayName !== targetName) await updateProfile(user, { displayName: targetName });
 
       const currentPlayers = snap.data().players || {};
+      const existingData = currentPlayers[user.uid] || {};
+
       const playerData = {
         nickname: targetName,
         photo: user.photoURL,
-        lastAnswerIdx: null,
-        score: currentPlayers[user.uid]?.score || 0
+        score: existingData.score || 0,
+        lastAnswerIdx: existingData.lastAnswerIdx || null,
+        lastAnsweredRoundId: existingData.lastAnsweredRoundId || null
       };
 
       await updateDoc(ref, { [`players.${user.uid}`]: playerData });
       localStorage.setItem('mohoot_player_pin', targetPin);
+
+      // Clear previous game state explicitly before entering lobby
+      setSession(null);
+      setCurrentRoundId(null);
+      setResult(null);
+      setHasAnswered(false);
+      setGameProcessed(false); // Reset stats tracking for new game
+
       setStep('LOBBY');
     } catch (e) {
       setErrorMsg(e.message);
-      setIsJoining(false);
       localStorage.removeItem('mohoot_player_pin');
+    } finally {
+      setIsJoining(false); // Ensure loader turns off
     }
   };
 
@@ -121,6 +240,12 @@ export default function PlayerApp() {
     localStorage.removeItem('mohoot_player_pin');
     setStep('JOIN');
     setSession(null);
+    setHasAnswered(false);
+    setResult(null);
+    setCurrentRoundId(null);
+    setGameProcessed(false);
+    setIsJoining(false);
+    // Note: We keep the PIN in the input for convenience, or you can clear it with setPin('')
   };
 
   const submitAnswer = async (idx) => {
@@ -131,80 +256,165 @@ export default function PlayerApp() {
     const isCorrect = idx === currentQ.correct;
     const timeLeft = session.endTime - Date.now();
     const duration = currentQ.duration * 1000;
-    const bonus = isCorrect ? Math.round(500 + (500 * (Math.max(0, timeLeft) / duration))) : 0;
 
+    const bonus = isCorrect ? Math.round(500 + (500 * (Math.max(0, timeLeft) / duration))) : 0;
     setResult({ correct: isCorrect, score: bonus });
 
+    // Update Local Stats
+    StatsService.updateStats({
+        incrementQuestionsAnswered: true,
+        incrementCorrectAnswers: isCorrect,
+        incrementIncorrectAnswers: !isCorrect,
+        addScore: bonus
+    });
+
     const sessionRef = doc(db, 'artifacts', appId, 'sessions', pin);
-    const updatePayload = { [`players.${user.uid}.lastAnswerIdx`]: idx };
-    if (isCorrect) updatePayload[`players.${user.uid}.score`] = (session.players[user.uid]?.score || 0) + bonus;
+    const updatePayload = {
+      [`players.${user.uid}.lastAnswerIdx`]: idx,
+      [`players.${user.uid}.lastAnsweredRoundId`]: session.roundId
+    };
+
+    if (isCorrect) {
+      updatePayload[`players.${user.uid}.score`] = (session.players[user.uid]?.score || 0) + bonus;
+    }
 
     await updateDoc(sessionRef, updatePayload);
   };
 
-  if (!user) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (!user) return <div className={`${COLORS.bg} h-screen flex items-center justify-center`}><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
 
+  if (showStats) return <StatsView onBack={() => setShowStats(false)} />;
+
+  // --- JOIN SCREEN ---
   if (step === 'JOIN') return (
-    <div className="h-screen bg-[#46178F] flex items-center justify-center p-6">
-      <div className="bg-white w-full max-w-sm p-6 rounded-lg shadow-xl space-y-4">
-        <h1 className="text-center text-3xl font-black text-[#46178F] mb-6">Mohoot!</h1>
-        <input className="w-full p-3 border-2 border-[#ccc] rounded font-bold text-center text-lg placeholder-gray-400 focus:border-[#46178F] outline-none"
-          placeholder="Game PIN" value={pin} onChange={e => setPin(e.target.value)} type="tel" />
-        <input className="w-full p-3 border-2 border-[#ccc] rounded font-bold text-center text-lg placeholder-gray-400 focus:border-[#46178F] outline-none"
-          placeholder="Nickname" value={nickname} onChange={e => setNickname(e.target.value)} />
-        {errorMsg && <div className="text-red-500 text-sm font-bold text-center">{errorMsg}</div>}
-        <Button onClick={() => joinGameInternal(pin, nickname)} disabled={isJoining} className="w-full py-3 bg-[#333] text-white">
-          {isJoining ? "Connecting..." : "Enter"}
+    <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center p-6 font-sans relative`}>
+      <button 
+        onClick={() => setShowStats(true)} 
+        className="absolute top-6 right-6 p-3 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-indigo-600 transition-all shadow-lg"
+        title="My Stats"
+      >
+        <User size={24} />
+      </button>
+
+      <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl space-y-8`}>
+
+        <div className="text-center">
+          <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-tighter mb-2">Mohoot!</h1>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-[0.3em]">Player Zone</p>
+        </div>
+
+        <div className="space-y-4">
+          <input
+            className={`w-full p-4 rounded-xl font-black text-center text-2xl outline-none transition-all ring-offset-2 ring-offset-slate-900 focus:ring-2 focus:ring-indigo-500 ${COLORS.input}`}
+            placeholder="Game PIN"
+            value={pin}
+            onChange={e => setPin(e.target.value)}
+            type="tel"
+          />
+          <input
+            className={`w-full p-4 rounded-xl font-bold text-center text-lg outline-none transition-all ring-offset-2 ring-offset-slate-900 focus:ring-2 focus:ring-indigo-500 ${COLORS.input}`}
+            placeholder="Nickname"
+            value={nickname}
+            onChange={e => setNickname(e.target.value)}
+          />
+        </div>
+
+        {errorMsg && (
+          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-xl text-sm font-bold text-center flex items-center justify-center gap-2">
+            <XCircle size={16} /> {errorMsg}
+          </div>
+        )}
+
+        <Button onClick={() => joinGameInternal(pin, nickname)} disabled={isJoining} className={`w-full py-4 text-white text-lg ${COLORS.primary}`}>
+          {isJoining ? <Loader2 className="animate-spin" /> : "Enter Game"}
         </Button>
       </div>
     </div>
   );
 
-  if (!session) return <div className="h-screen flex items-center justify-center bg-[#46178F] text-white font-bold">Connecting...</div>;
-
-  if (session.status === 'LOBBY') return (
-    <div className="h-screen bg-[#46178F] text-white flex flex-col items-center justify-center p-6 text-center">
-      <h1 className="text-4xl font-bold mb-4">You're In!</h1>
-      <div className="text-xl font-medium mb-8">See your name on screen?</div>
-      <div className="bg-white/10 px-8 py-3 rounded-full font-bold text-xl">{nickname}</div>
-      <button onClick={handleBack} className="absolute bottom-8 text-sm opacity-50 underline">Leave Game</button>
+  if (!session) return (
+    <div className={`h-screen flex flex-col items-center justify-center ${COLORS.bg} ${COLORS.text}`}>
+      <Loader2 size={48} className="animate-spin mb-4 text-indigo-500" />
+      <div className="font-bold text-xl tracking-tight animate-pulse">Syncing with Host...</div>
     </div>
   );
 
+  // --- LOBBY SCREEN ---
+  if (session.status === 'LOBBY') return (
+    <div className={`h-screen ${COLORS.bg} ${COLORS.text} flex flex-col items-center justify-center p-6 text-center relative overflow-hidden`}>
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20"></div>
+      <div className="relative z-10 flex flex-col items-center w-full max-w-md">
+        <div className="mb-8 p-4 bg-indigo-500/10 rounded-full">
+          <Zap size={48} className="text-indigo-400" />
+        </div>
+        <h1 className="text-4xl font-black mb-2 tracking-tight">You're In!</h1>
+        <div className="text-lg font-medium mb-12 text-slate-400">See your name on screen?</div>
+
+        <div className="bg-slate-800 border border-slate-700 px-12 py-6 rounded-2xl font-black text-3xl shadow-2xl transform hover:scale-105 transition-transform text-indigo-400">
+          {nickname}
+        </div>
+      </div>
+
+      <button onClick={handleBack} className="absolute bottom-8 text-slate-500 hover:text-white transition flex items-center gap-2 font-bold text-sm">
+        <LogOut size={16} /> Leave Game
+      </button>
+    </div>
+  );
+
+  // --- QUESTION SCREEN ---
   if (session.status === 'QUESTION') {
     if (hasAnswered) return (
-      <div className="h-screen bg-white flex flex-col items-center justify-center text-[#46178F]">
-        <Loader2 size={48} className="animate-spin mb-4" />
-        <h2 className="text-2xl font-bold">Answer Locked</h2>
-        <p>Wait for the result...</p>
+      <div className={`h-screen ${COLORS.bg} flex flex-col items-center justify-center ${COLORS.text} animate-in fade-in duration-300`}>
+        <div className="bg-indigo-500/10 p-8 rounded-full mb-6">
+          <Loader2 size={64} className="animate-spin text-indigo-400" />
+        </div>
+        <h2 className="text-3xl font-black mb-2">Answer Locked</h2>
+        <p className="text-slate-400 font-bold">Good luck, {nickname}!</p>
       </div>
     );
     return (
-      <div className="h-screen grid grid-cols-2 gap-4 p-4 bg-white">
-        {SHAPES.map((s, i) => (
-          <Button key={i} className={`${s.color} h-full w-full text-white`} onClick={() => submitAnswer(i)}>
-            {React.createElement(s.icon, { size: 40, fill: "white" })}
+      <div className="h-screen grid grid-cols-2 gap-4 p-4 bg-slate-900">
+        {COLORS.shapes.map((s, i) => (
+          <Button key={i} className={`${s.color} ${s.hover} h-full w-full text-white shadow-none text-6xl`} onClick={() => submitAnswer(i)}>
+            {React.createElement(s.icon, { size: 80, fill: "currentColor", className: "drop-shadow-lg" })}
           </Button>
         ))}
       </div>
     );
   }
 
-  // Finished or Leaderboard
+  // --- RESULT / FINISHED SCREEN ---
   const isCorrect = result?.correct;
+  const bgClass = result === null ? 'bg-slate-800' : (isCorrect ? 'bg-emerald-600' : 'bg-rose-600');
+
   return (
-    <div className={`h-screen flex flex-col items-center justify-center text-white p-6 text-center ${isCorrect ? 'bg-[#34A853]' : 'bg-[#EA4335]'}`}>
-      <div className="bg-white/20 p-8 rounded-full mb-6">
-        {isCorrect ? <CheckCircle2 size={60} /> : <XCircle size={60} />}
+    <div className={`h-screen flex flex-col items-center justify-center text-white p-6 text-center ${bgClass} transition-colors duration-500`}>
+      <div className="bg-white/20 p-8 rounded-full mb-6 backdrop-blur-md shadow-2xl ring-4 ring-white/10">
+        {result === null ? <LogOut size={60} /> : (isCorrect ? <CheckCircle2 size={60} /> : <XCircle size={60} />)}
       </div>
-      <h2 className="text-4xl font-black mb-2">{isCorrect ? "Correct" : "Incorrect"}</h2>
-      {isCorrect && <div className="text-2xl font-medium">+{result?.score}</div>}
-      <div className="mt-12 bg-black/20 px-8 py-4 rounded-xl">
-        <div className="text-xs font-bold uppercase tracking-widest mb-1 opacity-75">Score</div>
-        <div className="text-3xl font-black">{session.players[user.uid]?.score}</div>
+
+      <h2 className="text-6xl font-black mb-4 tracking-tighter drop-shadow-md">
+        {result === null ? "Time's Up!" : (isCorrect ? "Correct!" : "Incorrect")}
+      </h2>
+
+      {isCorrect && (
+        <div className="text-4xl font-black bg-black/20 px-8 py-3 rounded-2xl mb-8 backdrop-blur-sm border border-white/10">
+          +{result?.score}
+        </div>
+      )}
+
+      <div className="mt-8 bg-black/40 border border-white/5 w-full max-w-xs p-6 rounded-2xl backdrop-blur-xl">
+        <div className="text-xs font-bold uppercase tracking-widest mb-1 text-white/60">Total Score</div>
+        <div className="text-5xl font-black">{session.players[user.uid]?.score || 0}</div>
       </div>
+
       {session.status === 'FINISHED' && (
-        <Button onClick={handleBack} className="mt-12 bg-white text-black px-8 py-3">Exit Game</Button>
+        <div className="mt-12 space-y-4 w-full max-w-xs animate-in slide-in-from-bottom-10">
+          <div className="flex items-center justify-center gap-2 text-xl font-bold opacity-90">
+            <Trophy size={24} /> Game Over
+          </div>
+          <Button onClick={handleBack} className="w-full bg-white text-slate-900 py-4 hover:bg-slate-200">Exit Game</Button>
+        </div>
       )}
     </div>
   );
