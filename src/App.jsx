@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import {
   CheckCircle2, XCircle, Loader2, Triangle, Hexagon, Circle, Square,
-  LogOut, Zap, Trophy, User, Play
+  LogOut, Zap, Trophy, User as UserIcon, Play
 } from 'lucide-react';
 import { StatsService } from './services/statsService';
 
@@ -33,10 +33,10 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'mohoot-prod';
 
 // --- AESTHETICS: "Cosmic Night" Theme ---
 const COLORS = {
-  bg: 'bg-slate-900', // Deep dark base
-  card: 'bg-slate-800/50', // Glassmorphism card
-  primary: 'bg-indigo-600 hover:bg-indigo-500', // Primary Action
-  accent: 'text-cyan-400', // Highlights
+  bg: 'bg-slate-900', 
+  card: 'bg-slate-800/50', 
+  primary: 'bg-indigo-600 hover:bg-indigo-500', 
+  accent: 'text-cyan-400', 
   text: 'text-white',
   input: 'bg-slate-950 border-slate-700 text-white focus:border-indigo-500',
   shapes: [
@@ -57,24 +57,33 @@ const Button = ({ children, onClick, className = '', disabled = false }) => (
   </button>
 );
 
-const StatsView = ({ onBack, db, userId }) => {
+// --- MODIFIED STATS VIEW ---
+const StatsView = ({ onBack, db, user, onSignOut }) => {
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
-    StatsService.loadStats(db, appId, userId).then(setStats);
-  }, [db, userId]);
+    StatsService.loadStats(db, appId, user.uid).then(setStats);
+  }, [db, user]);
 
-  if (!stats) return <div className="h-full flex items-center justify-center text-indigo-500"><Loader2 className="animate-spin" /></div>;
+  // FIX: Added COLORS.bg here to prevent white flash
+  if (!stats) return (
+    <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center text-indigo-500`}>
+      <Loader2 className="animate-spin" size={48} />
+    </div>
+  );
   
   return (
     <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center p-6 font-sans text-white`}>
-       <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl relative animate-in zoom-in duration-300`}>
+       <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl relative animate-in zoom-in duration-300 flex flex-col`}>
          <button onClick={onBack} className="absolute top-4 right-4 text-slate-400 hover:text-white transition">
            <XCircle size={24} />
          </button>
-         <h2 className="text-3xl font-black mb-6 text-center text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">My Stats</h2>
          
-         <div className="space-y-4">
+         <div className="text-center mb-6">
+            <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">My Stats</h2>
+         </div>
+         
+         <div className="space-y-4 flex-1">
            <div className="flex justify-between items-center p-4 bg-slate-900/50 rounded-xl border border-slate-700">
              <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">Games Played</span>
              <span className="text-2xl font-black">{stats.totalGamesPlayed}</span>
@@ -100,6 +109,26 @@ const StatsView = ({ onBack, db, userId }) => {
              <span className="text-2xl font-black text-indigo-300">{stats.totalScore}</span>
            </div>
          </div>
+
+         {/* FIX: User Email & Log Out moved here */}
+         <div className="mt-8 pt-6 border-t border-slate-700 flex flex-col items-center gap-4">
+            <div className="flex items-center gap-3 text-slate-300 bg-slate-900/50 px-4 py-2 rounded-full">
+                {user.photoURL ? (
+                    <img src={user.photoURL} alt="User" className="w-6 h-6 rounded-full" />
+                ) : (
+                    <UserIcon size={16} />
+                )}
+                <span className="text-sm font-medium">{user.email}</span>
+            </div>
+            
+            <button 
+                onClick={onSignOut}
+                className="flex items-center gap-2 text-rose-400 hover:text-rose-300 text-sm font-bold uppercase tracking-wide transition-colors"
+            >
+                <LogOut size={16} /> Sign Out
+            </button>
+         </div>
+
        </div>
     </div>
   );
@@ -113,19 +142,19 @@ export default function PlayerApp() {
   const [session, setSession] = useState(null);
   const [showStats, setShowStats] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  // FIX: New state for login loading
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Game State
   const [hasAnswered, setHasAnswered] = useState(false);
   const [currentRoundId, setCurrentRoundId] = useState(null);
   const [result, setResult] = useState(null);
-  
-  // Track game completion to prevent double counting
   const [gameProcessed, setGameProcessed] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
-  // 1. Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -133,20 +162,24 @@ export default function PlayerApp() {
         setNickname(currentUser.displayName);
       }
       setLoading(false);
+      // Reset logging in state if auth state changes
+      setIsLoggingIn(false);
     });
     return () => unsubscribe();
   }, []);
 
   const handleLogin = async () => {
+    // FIX: Trigger loading immediately
+    setIsLoggingIn(true);
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (error) {
       console.error("Login failed:", error);
       setErrorMsg(error.message);
+      setIsLoggingIn(false);
     }
   };
 
-  // 2. Auto-Rejoin
   useEffect(() => {
     const savedPin = localStorage.getItem('mohoot_player_pin');
     if (savedPin && user) {
@@ -155,10 +188,8 @@ export default function PlayerApp() {
     }
   }, [user]);
 
-  // 3. CORE SYNC LOGIC
   useEffect(() => {
     if (step === 'JOIN' || !pin || !user) return;
-
     const unsub = onSnapshot(doc(db, 'artifacts', appId, 'sessions', pin), (snap) => {
       if (!snap.exists()) {
         handleBack();
@@ -171,11 +202,9 @@ export default function PlayerApp() {
       handleBack();
       setErrorMsg("Connection lost.");
     });
-
     return () => unsub();
   }, [step, pin, user]); 
 
-  // 4. LOGIC HANDLER
   useEffect(() => {
     if (!session || !user) return;
 
@@ -268,7 +297,6 @@ export default function PlayerApp() {
     const bonus = isCorrect ? Math.round(500 + (500 * (Math.max(0, timeLeft) / duration))) : 0;
     setResult({ correct: isCorrect, score: bonus });
 
-    // Update Firestore Stats
     StatsService.updateStats(db, appId, user.uid, {
         incrementQuestionsAnswered: true,
         incrementCorrectAnswers: isCorrect,
@@ -291,6 +319,7 @@ export default function PlayerApp() {
 
   if (loading) return <div className={`${COLORS.bg} h-screen flex items-center justify-center`}><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
 
+  // --- LOGIN SCREEN ---
   if (!user) {
     return (
       <div className={`min-h-screen ${COLORS.bg} flex flex-col items-center justify-center p-6 font-sans`}>
@@ -300,15 +329,26 @@ export default function PlayerApp() {
 
           <button
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-4 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-900 font-bold py-4 px-6 rounded-2xl transition-all group"
+            disabled={isLoggingIn} // Disable while logging in
+            className="w-full flex items-center justify-center gap-4 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-900 font-bold py-4 px-6 rounded-2xl transition-all group disabled:opacity-70 disabled:cursor-wait"
           >
-            <svg className="w-6 h-6 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" fill="#FBBC05" />
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-            </svg>
-            Login with Google
+            {isLoggingIn ? (
+               // FIX: Show loader inside button
+               <>
+                 <Loader2 className="animate-spin text-slate-900" size={24} />
+                 <span>Connecting...</span>
+               </>
+            ) : (
+               <>
+                <svg className="w-6 h-6 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                </svg>
+                <span>Login with Google</span>
+               </>
+            )}
           </button>
           
           {errorMsg && (
@@ -319,25 +359,26 @@ export default function PlayerApp() {
     );
   }
 
-  if (showStats) return <StatsView onBack={() => setShowStats(false)} db={db} userId={user.uid} />;
+  // Pass user and signout handler to StatsView
+  if (showStats) return <StatsView onBack={() => setShowStats(false)} db={db} user={user} onSignOut={() => signOut(auth)} />;
 
   // --- JOIN SCREEN ---
   if (step === 'JOIN') return (
     <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center p-6 font-sans relative`}>
-      <div className="absolute top-6 right-6 flex gap-2">
+      <div className="absolute top-6 right-6">
+        {/* FIX: Only Avatar Icon shown here */}
         <button 
           onClick={() => setShowStats(true)} 
-          className="p-3 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-indigo-600 transition-all shadow-lg"
-          title="My Stats"
+          className="p-1 bg-slate-800/50 hover:bg-slate-700 rounded-full border border-slate-600 transition-all shadow-lg flex items-center gap-2 pr-4 group"
         >
-          <User size={24} />
-        </button>
-        <button 
-          onClick={() => signOut(auth)} 
-          className="p-3 bg-slate-800 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-700 transition-all shadow-lg"
-          title="Sign Out"
-        >
-          <LogOut size={24} />
+          {user.photoURL ? (
+              <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-transparent group-hover:border-indigo-400 transition-all" alt="Profile" />
+          ) : (
+              <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white">
+                  <UserIcon size={20} />
+              </div>
+          )}
+          <span className="text-slate-300 group-hover:text-white font-bold text-sm">My Stats</span>
         </button>
       </div>
 
@@ -349,15 +390,16 @@ export default function PlayerApp() {
         </div>
 
         <div className="space-y-4">
+          {/* FIX: Standardized styling for both inputs (text-xl font-bold) */}
           <input
-            className={`w-full p-4 rounded-xl font-black text-center text-2xl outline-none transition-all ring-offset-2 ring-offset-slate-900 focus:ring-2 focus:ring-indigo-500 ${COLORS.input}`}
+            className={`w-full p-4 rounded-xl font-bold text-center text-xl outline-none transition-all ring-offset-2 ring-offset-slate-900 focus:ring-2 focus:ring-indigo-500 ${COLORS.input}`}
             placeholder="Game PIN"
             value={pin}
             onChange={e => setPin(e.target.value)}
             type="tel"
           />
           <input
-            className={`w-full p-4 rounded-xl font-bold text-center text-lg outline-none transition-all ring-offset-2 ring-offset-slate-900 focus:ring-2 focus:ring-indigo-500 ${COLORS.input}`}
+            className={`w-full p-4 rounded-xl font-bold text-center text-xl outline-none transition-all ring-offset-2 ring-offset-slate-900 focus:ring-2 focus:ring-indigo-500 ${COLORS.input}`}
             placeholder="Nickname"
             value={nickname}
             onChange={e => setNickname(e.target.value)}
@@ -377,6 +419,7 @@ export default function PlayerApp() {
     </div>
   );
 
+  // ... (Rest of the component remains the same for LOBBY, QUESTION, RESULT)
   if (!session) return (
     <div className={`h-screen flex flex-col items-center justify-center ${COLORS.bg} ${COLORS.text}`}>
       <Loader2 size={48} className="animate-spin mb-4 text-indigo-500" />
