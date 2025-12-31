@@ -40,6 +40,7 @@ export const StatsService = {
     if (updates.incrementCorrectAnswers) firestoreUpdates.totalCorrectAnswers = increment(1);
     if (updates.incrementIncorrectAnswers) firestoreUpdates.totalIncorrectAnswers = increment(1);
     if (updates.addScore) firestoreUpdates.totalScore = increment(updates.addScore);
+    if (updates.incrementPlaytime) firestoreUpdates.totalPlaytime = increment(updates.incrementPlaytime); // in seconds
 
     try {
       await setDoc(ref, firestoreUpdates, { merge: true });

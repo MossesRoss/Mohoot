@@ -39,10 +39,10 @@ const THEME = {
   input: 'bg-[#020617] border border-white/10 text-white focus:border-violet-500 focus:ring-1 focus:ring-violet-500 placeholder-slate-600',
   textGradient: 'text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400',
   shapes: [
-    { id: 0, color: 'bg-rose-600', hover: 'hover:bg-rose-500', icon: Triangle },
-    { id: 1, color: 'bg-blue-600', hover: 'hover:bg-blue-500', icon: Hexagon }, // Game colors remain for playability
-    { id: 2, color: 'bg-amber-500', hover: 'hover:bg-amber-400', icon: Circle },
-    { id: 3, color: 'bg-emerald-600', hover: 'hover:bg-emerald-500', icon: Square },
+    { id: 0, color: 'bg-gradient-to-br from-rose-700 to-rose-900', border: 'border-rose-600/50', hover: 'hover:scale-[0.98]', icon: Triangle },
+    { id: 1, color: 'bg-gradient-to-br from-blue-700 to-blue-900', border: 'border-blue-600/50', hover: 'hover:scale-[0.98]', icon: Hexagon },
+    { id: 2, color: 'bg-gradient-to-br from-amber-700 to-amber-900', border: 'border-amber-600/50', hover: 'hover:scale-[0.98]', icon: Circle },
+    { id: 3, color: 'bg-gradient-to-br from-emerald-700 to-emerald-900', border: 'border-emerald-600/50', hover: 'hover:scale-[0.98]', icon: Square },
   ]
 };
 
@@ -70,6 +70,10 @@ const StatsView = ({ onBack, db, user, onSignOut }) => {
     </div>
   );
   
+  const wlr = stats.totalGamesPlayed > 0 
+    ? ((stats.totalGamesWon / stats.totalGamesPlayed) * 100).toFixed(1) 
+    : "0.0";
+    
   return (
     <div className={`min-h-screen ${THEME.bg} flex items-center justify-center p-6 font-sans text-white`}>
        <div className={`${THEME.card} w-full max-w-sm p-8 rounded-[2rem] relative animate-in zoom-in duration-300 flex flex-col`}>
@@ -86,6 +90,14 @@ const StatsView = ({ onBack, db, user, onSignOut }) => {
              <span className="text-slate-500 font-bold uppercase text-xs tracking-wider">Games Played</span>
              <span className="text-2xl font-black">{stats.totalGamesPlayed}</span>
            </div>
+           
+           {/* Highlighted Win Rate (Removed Playtime) */}
+           <div className="flex flex-col items-center justify-center p-6 bg-[#020617]/50 rounded-xl border border-white/5 shadow-lg relative overflow-hidden group">
+              <div className="absolute inset-0 bg-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <span className="text-slate-500 font-bold uppercase text-xs tracking-wider mb-2 z-10">Win/Loss Ratio</span>
+              <span className="text-4xl font-black text-violet-400 z-10">{wlr}%</span>
+           </div>
+
            <div className="flex justify-between items-center p-4 bg-[#020617]/50 rounded-xl border border-white/5">
              <span className="text-slate-500 font-bold uppercase text-xs tracking-wider">Victories</span>
              <span className="text-2xl font-black text-yellow-500 drop-shadow-sm">{stats.totalGamesWon}</span>
@@ -146,7 +158,8 @@ export default function PlayerApp() {
   const [currentRoundId, setCurrentRoundId] = useState(null);
   const [result, setResult] = useState(null);
   const [gameProcessed, setGameProcessed] = useState(false);
-
+  
+  const joinTimeRef = useRef(Date.now());
   const [errorMsg, setErrorMsg] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
@@ -177,7 +190,21 @@ export default function PlayerApp() {
     const savedPin = localStorage.getItem('mohoot_player_pin');
     if (savedPin && user) {
       setPin(savedPin);
-      joinGameInternal(savedPin, nickname);
+      
+      const verifyAndJoin = async () => {
+          try {
+              const ref = doc(db, 'artifacts', appId, 'sessions', savedPin);
+              const snap = await getDoc(ref);
+              if (snap.exists()) {
+                   joinGameInternal(savedPin, nickname || user.displayName);
+              } else {
+                   localStorage.removeItem('mohoot_player_pin');
+              }
+          } catch(e) {
+               localStorage.removeItem('mohoot_player_pin');
+          }
+      };
+      verifyAndJoin();
     }
   }, [user]);
 
@@ -192,7 +219,7 @@ export default function PlayerApp() {
       setSession(snap.data()); 
     }, (err) => {
       console.error(err);
-      handleBack();
+      handleBack(); 
       setErrorMsg("Connection lost.");
     });
     return () => unsub();
@@ -217,15 +244,22 @@ export default function PlayerApp() {
       const players = Object.values(session.players || {});
       const sorted = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
       const amIWinner = sorted.length > 0 && session.players[user.uid]?.score === sorted[0].score;
+      
+      const playtime = Math.round((Date.now() - joinTimeRef.current) / 1000);
 
       StatsService.updateStats(db, appId, user.uid, {
         incrementGamesPlayed: true,
-        incrementGamesWon: amIWinner
+        incrementGamesWon: amIWinner,
+        incrementPlaytime: playtime
       });
+      
+      // FIX: Immediate Transition to Stats, No Timer
+      setShowStats(true);
+      handleBack(); 
     }
 
   }, [session, currentRoundId, user, gameProcessed, nickname]);
-
+  
   const joinGameInternal = async (targetPin, targetName) => {
     if (!user || !targetPin) return;
     setIsJoining(true);
@@ -257,6 +291,7 @@ export default function PlayerApp() {
       setResult(null);
       setHasAnswered(false);
       setGameProcessed(false); 
+      joinTimeRef.current = Date.now(); 
 
       setStep('LOBBY');
     } catch (e) {
@@ -316,7 +351,6 @@ export default function PlayerApp() {
   if (!user) {
     return (
       <div className={`min-h-screen ${THEME.bg} flex flex-col items-center justify-center p-6 font-sans overflow-hidden relative`}>
-        {/* Background blobs */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-violet-600/10 rounded-full blur-[80px]"></div>
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-fuchsia-600/10 rounded-full blur-[80px]"></div>
 
@@ -355,14 +389,12 @@ export default function PlayerApp() {
     );
   }
 
-  // Pass user and signout handler to StatsView
   if (showStats) return <StatsView onBack={() => setShowStats(false)} db={db} user={user} onSignOut={() => signOut(auth)} />;
 
   // --- JOIN SCREEN ---
   if (step === 'JOIN') return (
     <div className={`min-h-screen ${THEME.bg} flex items-center justify-center p-6 font-sans relative`}>
       <div className="absolute top-6 right-6">
-        {/* FIX: Royal Avatar Ring */}
         <button 
           onClick={() => setShowStats(true)} 
           className="relative group rounded-full focus:outline-none"
@@ -384,7 +416,7 @@ export default function PlayerApp() {
 
         <div className="text-center">
           <h1 className={`text-5xl font-black ${THEME.textGradient} tracking-tighter mb-2`}>Mohoot!</h1>
-          <p className="text-slate-500 font-bold text-xs uppercase tracking-[0.3em]">Game Access</p>
+          <p className="text-slate-500 font-bold text-xs uppercase tracking-[0.3em]">by Mosses</p>
         </div>
 
         <div className="space-y-4">
@@ -420,13 +452,13 @@ export default function PlayerApp() {
     <div className={`h-screen flex flex-col items-center justify-center ${THEME.bg} text-white`}>
       <Loader2 size={48} className="animate-spin mb-4 text-violet-500" />
       <div className="font-bold text-xl tracking-tight animate-pulse text-violet-200">Syncing with Host...</div>
+      <button onClick={handleBack} className="mt-8 text-slate-500 hover:text-white underline text-sm">Cancel</button>
     </div>
   );
 
   // --- LOBBY SCREEN ---
   if (session.status === 'LOBBY') return (
     <div className={`h-screen ${THEME.bg} text-white flex flex-col items-center justify-center p-6 text-center relative overflow-hidden`}>
-      {/* Background Texture blended */}
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-10 mix-blend-screen"></div>
       
       <div className="relative z-10 flex flex-col items-center w-full max-w-md">
@@ -449,33 +481,31 @@ export default function PlayerApp() {
 
   if (session.status === 'QUESTION') {
     if (hasAnswered) return (
-      <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white animate-in fade-in duration-300`}>
+      <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white animate-in fade-in duration-300 relative`}>
         <div className="bg-violet-500/10 p-8 rounded-full mb-6 border border-violet-500/20">
           <Loader2 size={64} className="animate-spin text-violet-400" />
         </div>
         <h2 className="text-3xl font-black mb-2">Answer Locked</h2>
         <p className="text-slate-500 font-bold">Good luck, {nickname}!</p>
+        <button onClick={handleBack} className="absolute bottom-8 text-slate-500 hover:text-white text-xs uppercase font-bold tracking-widest">Quit</button>
       </div>
     );
     return (
       <div className={`h-screen grid grid-cols-2 gap-4 p-4 ${THEME.bg}`}>
         {THEME.shapes.map((s, i) => (
-          // REMOVED ICONS inside the button, kept only the color block and border
-          <Button key={i} className={`${s.color} ${s.hover} h-full w-full text-white shadow-none text-6xl border-b-4 border-black/20 active:border-b-0 active:translate-y-1 transition-all`} onClick={() => submitAnswer(i)}>
-             {/* No Icon Here */}
+          <Button key={i} className={`${s.color} border-b-4 ${s.border} ${s.hover} h-full w-full text-white shadow-none text-6xl active:border-b-0 active:translate-y-1 transition-all`} onClick={() => submitAnswer(i)}>
           </Button>
         ))}
       </div>
     );
   }
 
-  // --- RESULT / FINISHED SCREEN ---
+  // --- RESULT SCREEN (INTERIM) ---
   const isCorrect = result?.correct;
-  // Standard result colors are retained as they are functional (Red/Green)
   const bgClass = result === null ? 'bg-slate-900' : (isCorrect ? 'bg-emerald-600' : 'bg-rose-600');
 
   return (
-    <div className={`h-screen flex flex-col items-center justify-center text-white p-6 text-center ${bgClass} transition-colors duration-500`}>
+    <div className={`h-screen flex flex-col items-center justify-center text-white p-6 text-center ${bgClass} transition-colors duration-500 relative`}>
       <div className="bg-white/20 p-8 rounded-full mb-6 backdrop-blur-md shadow-2xl ring-4 ring-white/10">
         {result === null ? <LogOut size={60} /> : (isCorrect ? <CheckCircle2 size={60} /> : <XCircle size={60} />)}
       </div>
@@ -495,14 +525,14 @@ export default function PlayerApp() {
         <div className="text-5xl font-black">{session.players[user.uid]?.score || 0}</div>
       </div>
 
-      {session.status === 'FINISHED' && (
-        <div className="mt-12 space-y-4 w-full max-w-xs animate-in slide-in-from-bottom-10">
-          <div className="flex items-center justify-center gap-2 text-xl font-bold opacity-90">
-            <Trophy size={24} /> Game Over
-          </div>
-          <Button onClick={handleBack} className="w-full bg-white text-slate-900 py-4 hover:bg-slate-200">Exit Game</Button>
-        </div>
-      )}
+      <button 
+        onClick={handleBack} 
+        className="absolute top-6 right-6 p-2 rounded-full bg-black/20 hover:bg-black/40 text-white/70 hover:text-white transition-all"
+        title="Force Quit"
+      >
+        <XCircle size={24} />
+      </button>
+  
     </div>
   );
 }
