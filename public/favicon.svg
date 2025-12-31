@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="100" fill="#10B981"/>
-  <path d="M144 144v224h64V224l48 48 48-48v144h64V144h-64l-48 48-48-48z" fill="white"/>
+  <defs>
+    <linearGradient id="playerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c3aed;stop-opacity:1" /> <stop offset="100%" style="stop-color:#c026d3;stop-opacity:1" /> </linearGradient>
+  </defs>
+  <text x="50%" y="50%" font-family="sans-serif" font-weight="900" font-size="400" fill="url(#playerGrad)" text-anchor="middle" dy=".35em">
+    M!
+  </text>
 </svg>

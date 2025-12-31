@@ -31,17 +31,16 @@ const auth = getAuth(app);
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'mohoot-prod';
 
-// --- AESTHETICS: "Deep Focus" Theme ---
-const COLORS = {
-  bg: 'bg-app-bg', 
-  card: 'bg-slate-800/50', 
-  primary: 'bg-brand-primary hover:opacity-90', 
-  accent: 'text-brand-accent', 
-  text: 'text-white',
-  input: 'bg-slate-950 border-slate-700 text-white focus:border-brand-primary',
+// --- COSMIC THEME CONSTANTS ---
+const THEME = {
+  bg: 'bg-[#020617]', // Absolute deep slate
+  card: 'bg-[#0F172A]/70 backdrop-blur-2xl border border-white/10 shadow-2xl', 
+  primary: 'bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-900/20', 
+  input: 'bg-[#020617] border border-white/10 text-white focus:border-violet-500 focus:ring-1 focus:ring-violet-500 placeholder-slate-600',
+  textGradient: 'text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400',
   shapes: [
     { id: 0, color: 'bg-rose-600', hover: 'hover:bg-rose-500', icon: Triangle },
-    { id: 1, color: 'bg-blue-600', hover: 'hover:bg-blue-500', icon: Hexagon },
+    { id: 1, color: 'bg-blue-600', hover: 'hover:bg-blue-500', icon: Hexagon }, // Game colors remain for playability
     { id: 2, color: 'bg-amber-500', hover: 'hover:bg-amber-400', icon: Circle },
     { id: 3, color: 'bg-emerald-600', hover: 'hover:bg-emerald-500', icon: Square },
   ]
@@ -65,54 +64,52 @@ const StatsView = ({ onBack, db, user, onSignOut }) => {
     StatsService.loadStats(db, appId, user.uid).then(setStats);
   }, [db, user]);
 
-  // FIX: Added COLORS.bg here to prevent white flash
   if (!stats) return (
-    <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center text-indigo-500`}>
+    <div className={`min-h-screen ${THEME.bg} flex items-center justify-center text-violet-500`}>
       <Loader2 className="animate-spin" size={48} />
     </div>
   );
   
   return (
-    <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center p-6 font-sans text-white`}>
-       <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl relative animate-in zoom-in duration-300 flex flex-col`}>
-         <button onClick={onBack} className="absolute top-4 right-4 text-slate-400 hover:text-white transition">
+    <div className={`min-h-screen ${THEME.bg} flex items-center justify-center p-6 font-sans text-white`}>
+       <div className={`${THEME.card} w-full max-w-sm p-8 rounded-[2rem] relative animate-in zoom-in duration-300 flex flex-col`}>
+         <button onClick={onBack} className="absolute top-4 right-4 text-slate-500 hover:text-white transition">
            <XCircle size={24} />
          </button>
          
-         <div className="text-center mb-6">
-            <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">My Stats</h2>
+         <div className="text-center mb-8">
+            <h2 className={`text-3xl font-black ${THEME.textGradient}`}>My Record</h2>
          </div>
          
          <div className="space-y-4 flex-1">
-           <div className="flex justify-between items-center p-4 bg-app-bg/50 rounded-xl border border-slate-700">
-             <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">Games Played</span>
+           <div className="flex justify-between items-center p-4 bg-[#020617]/50 rounded-xl border border-white/5">
+             <span className="text-slate-500 font-bold uppercase text-xs tracking-wider">Games Played</span>
              <span className="text-2xl font-black">{stats.totalGamesPlayed}</span>
            </div>
-           <div className="flex justify-between items-center p-4 bg-app-bg/50 rounded-xl border border-slate-700">
-             <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">Games Won 🏆</span>
-             <span className="text-2xl font-black text-yellow-400">{stats.totalGamesWon}</span>
+           <div className="flex justify-between items-center p-4 bg-[#020617]/50 rounded-xl border border-white/5">
+             <span className="text-slate-500 font-bold uppercase text-xs tracking-wider">Victories</span>
+             <span className="text-2xl font-black text-yellow-500 drop-shadow-sm">{stats.totalGamesWon}</span>
            </div>
            
            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-emerald-900/20 rounded-xl border border-emerald-500/20 text-center">
+              <div className="p-4 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-center">
                  <div className="text-2xl font-black text-emerald-400">{stats.totalCorrectAnswers}</div>
-                 <div className="text-[10px] uppercase font-bold text-emerald-600">Correct</div>
+                 <div className="text-[10px] uppercase font-bold text-emerald-600/70">Correct</div>
               </div>
-              <div className="p-4 bg-rose-900/20 rounded-xl border border-rose-500/20 text-center">
+              <div className="p-4 bg-rose-500/10 rounded-xl border border-rose-500/20 text-center">
                  <div className="text-2xl font-black text-rose-400">{stats.totalIncorrectAnswers}</div>
-                 <div className="text-[10px] uppercase font-bold text-rose-600">Incorrect</div>
+                 <div className="text-[10px] uppercase font-bold text-rose-600/70">Incorrect</div>
               </div>
            </div>
 
-           <div className="flex justify-between items-center p-4 bg-indigo-900/20 rounded-xl border border-indigo-500/20">
-             <span className="text-indigo-400 font-bold uppercase text-xs tracking-wider">Total Score</span>
-             <span className="text-2xl font-black text-indigo-300">{stats.totalScore}</span>
+           <div className="flex justify-between items-center p-4 bg-violet-500/10 rounded-xl border border-violet-500/20">
+             <span className="text-violet-400 font-bold uppercase text-xs tracking-wider">Total Score</span>
+             <span className="text-2xl font-black text-violet-300">{stats.totalScore}</span>
            </div>
          </div>
 
-         {/* FIX: User Email & Log Out moved here */}
-         <div className="mt-8 pt-6 border-t border-slate-700 flex flex-col items-center gap-4">
-            <div className="flex items-center gap-3 text-slate-300 bg-app-bg/50 px-4 py-2 rounded-full">
+         <div className="mt-8 pt-6 border-t border-white/5 flex flex-col items-center gap-4">
+            <div className="flex items-center gap-3 text-slate-300 bg-[#020617] px-4 py-2 rounded-full border border-white/5">
                 {user.photoURL ? (
                     <img src={user.photoURL} alt="User" className="w-6 h-6 rounded-full" />
                 ) : (
@@ -142,8 +139,6 @@ export default function PlayerApp() {
   const [session, setSession] = useState(null);
   const [showStats, setShowStats] = useState(false);
   const [loading, setLoading] = useState(true);
-  
-  // FIX: New state for login loading
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Game State
@@ -162,14 +157,12 @@ export default function PlayerApp() {
         setNickname(currentUser.displayName);
       }
       setLoading(false);
-      // Reset logging in state if auth state changes
       setIsLoggingIn(false);
     });
     return () => unsubscribe();
   }, []);
 
   const handleLogin = async () => {
-    // FIX: Trigger loading immediately
     setIsLoggingIn(true);
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
@@ -317,30 +310,33 @@ export default function PlayerApp() {
     await updateDoc(sessionRef, updatePayload);
   };
 
-  if (loading) return <div className={`${COLORS.bg} h-screen flex items-center justify-center`}><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
+  if (loading) return <div className={`${THEME.bg} h-screen flex items-center justify-center`}><Loader2 className="animate-spin text-violet-500" size={48} /></div>;
 
   // --- LOGIN SCREEN ---
   if (!user) {
     return (
-      <div className={`min-h-screen ${COLORS.bg} flex flex-col items-center justify-center p-6 font-sans`}>
-        <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-10 rounded-3xl shadow-2xl text-center animate-in fade-in zoom-in duration-500`}>
-          <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-tighter mb-4">Mohoot!</h1>
-          <p className="text-slate-400 font-medium mb-10 text-sm uppercase tracking-widest">Player Zone</p>
+      <div className={`min-h-screen ${THEME.bg} flex flex-col items-center justify-center p-6 font-sans overflow-hidden relative`}>
+        {/* Background blobs */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-violet-600/10 rounded-full blur-[80px]"></div>
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-fuchsia-600/10 rounded-full blur-[80px]"></div>
+
+        <div className={`${THEME.card} w-full max-w-sm p-10 rounded-[2rem] text-center animate-in fade-in zoom-in duration-500 relative z-10`}>
+          <h1 className={`text-5xl font-black ${THEME.textGradient} tracking-tighter mb-4`}>Mohoot!</h1>
+          <p className="text-slate-400 font-medium mb-10 text-xs uppercase tracking-[0.3em]">Player Access</p>
 
           <button
             onClick={handleLogin}
-            disabled={isLoggingIn} // Disable while logging in
-            className="w-full flex items-center justify-center gap-4 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-900 font-bold py-4 px-6 rounded-2xl transition-all group disabled:opacity-70 disabled:cursor-wait"
+            disabled={isLoggingIn}
+            className="w-full flex items-center justify-center gap-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-900 font-bold py-4 px-6 rounded-xl transition-all group disabled:opacity-70 disabled:cursor-wait"
           >
             {isLoggingIn ? (
-               // FIX: Show loader inside button
                <>
                  <Loader2 className="animate-spin text-slate-900" size={24} />
                  <span>Connecting...</span>
                </>
             ) : (
                <>
-                <svg className="w-6 h-6 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" fill="#FBBC05" />
@@ -364,41 +360,43 @@ export default function PlayerApp() {
 
   // --- JOIN SCREEN ---
   if (step === 'JOIN') return (
-    <div className={`min-h-screen ${COLORS.bg} flex items-center justify-center p-6 font-sans relative`}>
+    <div className={`min-h-screen ${THEME.bg} flex items-center justify-center p-6 font-sans relative`}>
       <div className="absolute top-6 right-6">
-        {/* FIX: Only Avatar Icon shown here */}
+        {/* FIX: Royal Avatar Ring */}
         <button 
           onClick={() => setShowStats(true)} 
-          className="p-1 bg-slate-800/50 hover:bg-slate-700 rounded-full border border-slate-600 transition-all shadow-lg flex items-center justify-center group"
+          className="relative group rounded-full focus:outline-none"
         >
-          {user.photoURL ? (
-              <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-transparent group-hover:border-brand-primary transition-all" alt="Profile" />
-          ) : (
-              <div className="w-10 h-10 bg-brand-primary rounded-full flex items-center justify-center text-white">
-                  <UserIcon size={20} />
-              </div>
-          )}
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full opacity-0 group-hover:opacity-100 blur transition duration-500"></div>
+          <div className="relative rounded-full ring-2 ring-white/10 group-hover:ring-transparent bg-[#020617] p-0.5 transition-all">
+            {user.photoURL ? (
+                <img src={user.photoURL} className="w-10 h-10 rounded-full object-cover" alt="Profile" />
+            ) : (
+                <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-white">
+                    <UserIcon size={20} />
+                </div>
+            )}
+          </div>
         </button>
       </div>
 
-      <div className={`${COLORS.card} backdrop-blur-xl border border-slate-700 w-full max-w-sm p-8 rounded-3xl shadow-2xl space-y-8 animate-in fade-in duration-500`}>
+      <div className={`${THEME.card} w-full max-w-sm p-8 rounded-[2rem] space-y-8 animate-in fade-in duration-500`}>
 
         <div className="text-center">
-          <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-tighter mb-2">Mohoot!</h1>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-[0.3em]">Player Zone</p>
+          <h1 className={`text-5xl font-black ${THEME.textGradient} tracking-tighter mb-2`}>Mohoot!</h1>
+          <p className="text-slate-500 font-bold text-xs uppercase tracking-[0.3em]">Game Access</p>
         </div>
 
         <div className="space-y-4">
-          {/* FIX: Standardized styling for both inputs (text-xl font-bold) */}
           <input
-            className={`w-full p-4 rounded-xl font-bold text-center text-xl outline-none transition-all ring-offset-2 ring-offset-slate-900 focus:ring-2 focus:ring-indigo-500 ${COLORS.input}`}
+            className={`w-full p-4 rounded-xl font-bold text-center text-xl outline-none transition-all ${THEME.input}`}
             placeholder="Game PIN"
             value={pin}
             onChange={e => setPin(e.target.value)}
             type="tel"
           />
           <input
-            className={`w-full p-4 rounded-xl font-bold text-center text-xl outline-none transition-all ring-offset-2 ring-offset-slate-900 focus:ring-2 focus:ring-indigo-500 ${COLORS.input}`}
+            className={`w-full p-4 rounded-xl font-bold text-center text-xl outline-none transition-all ${THEME.input}`}
             placeholder="Nickname"
             value={nickname}
             onChange={e => setNickname(e.target.value)}
@@ -411,33 +409,34 @@ export default function PlayerApp() {
           </div>
         )}
 
-        <Button onClick={() => joinGameInternal(pin, nickname)} disabled={isJoining} className={`w-full py-4 text-white text-lg ${COLORS.primary}`}>
-          {isJoining ? <Loader2 className="animate-spin" /> : "Enter Game"}
+        <Button onClick={() => joinGameInternal(pin, nickname)} disabled={isJoining} className={`w-full py-4 text-lg ${THEME.primary}`}>
+          {isJoining ? <Loader2 className="animate-spin" /> : "ENTER GAME"}
         </Button>
       </div>
     </div>
   );
 
-  // ... (Rest of the component remains the same for LOBBY, QUESTION, RESULT)
   if (!session) return (
-    <div className={`h-screen flex flex-col items-center justify-center ${COLORS.bg} ${COLORS.text}`}>
-      <Loader2 size={48} className="animate-spin mb-4 text-indigo-500" />
-      <div className="font-bold text-xl tracking-tight animate-pulse">Syncing with Host...</div>
+    <div className={`h-screen flex flex-col items-center justify-center ${THEME.bg} text-white`}>
+      <Loader2 size={48} className="animate-spin mb-4 text-violet-500" />
+      <div className="font-bold text-xl tracking-tight animate-pulse text-violet-200">Syncing with Host...</div>
     </div>
   );
 
   // --- LOBBY SCREEN ---
   if (session.status === 'LOBBY') return (
-    <div className={`h-screen ${COLORS.bg} ${COLORS.text} flex flex-col items-center justify-center p-6 text-center relative overflow-hidden`}>
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20"></div>
+    <div className={`h-screen ${THEME.bg} text-white flex flex-col items-center justify-center p-6 text-center relative overflow-hidden`}>
+      {/* Background Texture blended */}
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-10 mix-blend-screen"></div>
+      
       <div className="relative z-10 flex flex-col items-center w-full max-w-md">
-        <div className="mb-8 p-4 bg-indigo-500/10 rounded-full">
-          <Zap size={48} className="text-indigo-400" />
+        <div className="mb-8 p-4 bg-violet-500/10 rounded-full border border-violet-500/20 shadow-[0_0_30px_rgba(139,92,246,0.2)]">
+          <Zap size={48} className="text-violet-400" />
         </div>
         <h1 className="text-4xl font-black mb-2 tracking-tight">You're In!</h1>
-        <div className="text-lg font-medium mb-12 text-slate-400">See your name on screen?</div>
+        <div className="text-lg font-medium mb-12 text-slate-500">Watch the main screen</div>
 
-        <div className="bg-slate-800 border border-slate-700 px-12 py-6 rounded-2xl font-black text-3xl shadow-2xl transform hover:scale-105 transition-transform text-indigo-400">
+        <div className="bg-[#1e293b]/50 border border-violet-500/30 px-12 py-6 rounded-2xl font-black text-3xl shadow-xl transform hover:scale-105 transition-transform text-violet-200 backdrop-blur-md">
           {nickname}
         </div>
       </div>
@@ -448,22 +447,22 @@ export default function PlayerApp() {
     </div>
   );
 
-  // --- QUESTION SCREEN ---
   if (session.status === 'QUESTION') {
     if (hasAnswered) return (
-      <div className={`h-screen ${COLORS.bg} flex flex-col items-center justify-center ${COLORS.text} animate-in fade-in duration-300`}>
-        <div className="bg-indigo-500/10 p-8 rounded-full mb-6">
-          <Loader2 size={64} className="animate-spin text-indigo-400" />
+      <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white animate-in fade-in duration-300`}>
+        <div className="bg-violet-500/10 p-8 rounded-full mb-6 border border-violet-500/20">
+          <Loader2 size={64} className="animate-spin text-violet-400" />
         </div>
         <h2 className="text-3xl font-black mb-2">Answer Locked</h2>
-        <p className="text-slate-400 font-bold">Good luck, {nickname}!</p>
+        <p className="text-slate-500 font-bold">Good luck, {nickname}!</p>
       </div>
     );
     return (
-      <div className="h-screen grid grid-cols-2 gap-4 p-4 bg-app-bg">
-        {COLORS.shapes.map((s, i) => (
-          <Button key={i} className={`${s.color} ${s.hover} h-full w-full text-white shadow-none text-6xl`} onClick={() => submitAnswer(i)}>
-            {React.createElement(s.icon, { size: 80, fill: "currentColor", className: "drop-shadow-lg" })}
+      <div className={`h-screen grid grid-cols-2 gap-4 p-4 ${THEME.bg}`}>
+        {THEME.shapes.map((s, i) => (
+          // REMOVED ICONS inside the button, kept only the color block and border
+          <Button key={i} className={`${s.color} ${s.hover} h-full w-full text-white shadow-none text-6xl border-b-4 border-black/20 active:border-b-0 active:translate-y-1 transition-all`} onClick={() => submitAnswer(i)}>
+             {/* No Icon Here */}
           </Button>
         ))}
       </div>
@@ -472,7 +471,8 @@ export default function PlayerApp() {
 
   // --- RESULT / FINISHED SCREEN ---
   const isCorrect = result?.correct;
-  const bgClass = result === null ? 'bg-slate-800' : (isCorrect ? 'bg-emerald-600' : 'bg-rose-600');
+  // Standard result colors are retained as they are functional (Red/Green)
+  const bgClass = result === null ? 'bg-slate-900' : (isCorrect ? 'bg-emerald-600' : 'bg-rose-600');
 
   return (
     <div className={`h-screen flex flex-col items-center justify-center text-white p-6 text-center ${bgClass} transition-colors duration-500`}>
