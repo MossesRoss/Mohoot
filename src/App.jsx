@@ -31,14 +31,14 @@ const auth = getAuth(app);
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'mohoot-prod';
 
-// --- AESTHETICS: "Cosmic Night" Theme ---
+// --- AESTHETICS: "Deep Focus" Theme ---
 const COLORS = {
-  bg: 'bg-slate-900', 
+  bg: 'bg-app-bg', 
   card: 'bg-slate-800/50', 
-  primary: 'bg-indigo-600 hover:bg-indigo-500', 
-  accent: 'text-cyan-400', 
+  primary: 'bg-brand-primary hover:opacity-90', 
+  accent: 'text-brand-accent', 
   text: 'text-white',
-  input: 'bg-slate-950 border-slate-700 text-white focus:border-indigo-500',
+  input: 'bg-slate-950 border-slate-700 text-white focus:border-brand-primary',
   shapes: [
     { id: 0, color: 'bg-rose-600', hover: 'hover:bg-rose-500', icon: Triangle },
     { id: 1, color: 'bg-blue-600', hover: 'hover:bg-blue-500', icon: Hexagon },
@@ -84,11 +84,11 @@ const StatsView = ({ onBack, db, user, onSignOut }) => {
          </div>
          
          <div className="space-y-4 flex-1">
-           <div className="flex justify-between items-center p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+           <div className="flex justify-between items-center p-4 bg-app-bg/50 rounded-xl border border-slate-700">
              <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">Games Played</span>
              <span className="text-2xl font-black">{stats.totalGamesPlayed}</span>
            </div>
-           <div className="flex justify-between items-center p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+           <div className="flex justify-between items-center p-4 bg-app-bg/50 rounded-xl border border-slate-700">
              <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">Games Won 🏆</span>
              <span className="text-2xl font-black text-yellow-400">{stats.totalGamesWon}</span>
            </div>
@@ -112,7 +112,7 @@ const StatsView = ({ onBack, db, user, onSignOut }) => {
 
          {/* FIX: User Email & Log Out moved here */}
          <div className="mt-8 pt-6 border-t border-slate-700 flex flex-col items-center gap-4">
-            <div className="flex items-center gap-3 text-slate-300 bg-slate-900/50 px-4 py-2 rounded-full">
+            <div className="flex items-center gap-3 text-slate-300 bg-app-bg/50 px-4 py-2 rounded-full">
                 {user.photoURL ? (
                     <img src={user.photoURL} alt="User" className="w-6 h-6 rounded-full" />
                 ) : (
@@ -369,16 +369,15 @@ export default function PlayerApp() {
         {/* FIX: Only Avatar Icon shown here */}
         <button 
           onClick={() => setShowStats(true)} 
-          className="p-1 bg-slate-800/50 hover:bg-slate-700 rounded-full border border-slate-600 transition-all shadow-lg flex items-center gap-2 pr-4 group"
+          className="p-1 bg-slate-800/50 hover:bg-slate-700 rounded-full border border-slate-600 transition-all shadow-lg flex items-center justify-center group"
         >
           {user.photoURL ? (
-              <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-transparent group-hover:border-indigo-400 transition-all" alt="Profile" />
+              <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-transparent group-hover:border-brand-primary transition-all" alt="Profile" />
           ) : (
-              <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white">
+              <div className="w-10 h-10 bg-brand-primary rounded-full flex items-center justify-center text-white">
                   <UserIcon size={20} />
               </div>
           )}
-          <span className="text-slate-300 group-hover:text-white font-bold text-sm">My Stats</span>
         </button>
       </div>
 
@@ -461,7 +460,7 @@ export default function PlayerApp() {
       </div>
     );
     return (
-      <div className="h-screen grid grid-cols-2 gap-4 p-4 bg-slate-900">
+      <div className="h-screen grid grid-cols-2 gap-4 p-4 bg-app-bg">
         {COLORS.shapes.map((s, i) => (
           <Button key={i} className={`${s.color} ${s.hover} h-full w-full text-white shadow-none text-6xl`} onClick={() => submitAnswer(i)}>
             {React.createElement(s.icon, { size: 80, fill: "currentColor", className: "drop-shadow-lg" })}
