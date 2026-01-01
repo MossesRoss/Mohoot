@@ -4,11 +4,11 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import {
   getFirestore, initializeFirestore, persistentLocalCache,
   persistentMultipleTabManager, doc, getDoc, updateDoc,
-  onSnapshot
+  onSnapshot, runTransaction
 } from 'firebase/firestore';
 import {
   CheckCircle2, XCircle, Loader2, Triangle, Hexagon, Circle, Square,
-  LogOut, Zap, Trophy, User as UserIcon, Play
+  LogOut, Zap, Trophy, User as UserIcon, Play, Hand, Lock, Send
 } from 'lucide-react';
 import { StatsService } from './services/statsService';
 
@@ -91,7 +91,6 @@ const StatsView = ({ onBack, db, user, onSignOut }) => {
              <span className="text-2xl font-black">{stats.totalGamesPlayed}</span>
            </div>
            
-           {/* Highlighted Win Rate (Removed Playtime) */}
            <div className="flex flex-col items-center justify-center p-6 bg-[#020617]/50 rounded-xl border border-white/5 shadow-lg relative overflow-hidden group">
               <div className="absolute inset-0 bg-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <span className="text-slate-500 font-bold uppercase text-xs tracking-wider mb-2 z-10">Win/Loss Ratio</span>
@@ -158,6 +157,7 @@ export default function PlayerApp() {
   const [currentRoundId, setCurrentRoundId] = useState(null);
   const [result, setResult] = useState(null);
   const [gameProcessed, setGameProcessed] = useState(false);
+  const [typingAnswer, setTypingAnswer] = useState("");
   
   const joinTimeRef = useRef(Date.now());
   const [errorMsg, setErrorMsg] = useState('');
@@ -232,6 +232,7 @@ export default function PlayerApp() {
       setCurrentRoundId(session.roundId);
       setHasAnswered(false);
       setResult(null);
+      setTypingAnswer(""); // Reset typing
     }
 
     const myData = session.players[user.uid];
@@ -253,7 +254,6 @@ export default function PlayerApp() {
         incrementPlaytime: playtime
       });
       
-      // FIX: Immediate Transition to Stats, No Timer
       setShowStats(true);
       handleBack(); 
     }
@@ -313,12 +313,42 @@ export default function PlayerApp() {
     setIsJoining(false);
   };
 
-  const submitAnswer = async (idx) => {
+  const handleBuzzer = async () => {
+      // Transaction to claim buzzer safely
+      const sessionRef = doc(db, 'artifacts', appId, 'sessions', pin);
+      try {
+          await runTransaction(db, async (transaction) => {
+              const sfDoc = await transaction.get(sessionRef);
+              if (!sfDoc.exists()) throw "Document does not exist!";
+              
+              const data = sfDoc.data();
+              if (data.buzzedPlayer === null) {
+                  transaction.update(sessionRef, { 
+                      buzzedPlayer: { uid: user.uid, timestamp: Date.now() } 
+                  });
+              }
+          });
+      } catch (e) {
+          console.log("Buzzer contention:", e);
+      }
+  };
+
+  const submitAnswer = async (answer) => {
     if (hasAnswered) return;
     setHasAnswered(true);
 
     const currentQ = session.quizSnapshot.questions[session.currentQuestionIndex];
-    const isCorrect = idx === currentQ.correct;
+    const qType = currentQ.type || 'CHOICE';
+    
+    let isCorrect = false;
+    
+    if (qType === 'CHOICE') {
+         isCorrect = answer === currentQ.correct;
+    } else if (qType === 'TYPING') {
+         const correctText = currentQ.correctText || "";
+         isCorrect = answer.trim().toLowerCase() === correctText.trim().toLowerCase();
+    }
+
     const timeLeft = session.endTime - Date.now();
     const duration = currentQ.duration * 1000;
 
@@ -334,7 +364,7 @@ export default function PlayerApp() {
 
     const sessionRef = doc(db, 'artifacts', appId, 'sessions', pin);
     const updatePayload = {
-      [`players.${user.uid}.lastAnswerIdx`]: idx,
+      [`players.${user.uid}.lastAnswerIdx`]: qType === 'CHOICE' ? answer : -1, // -1 for text/buzzer
       [`players.${user.uid}.lastAnsweredRoundId`]: session.roundId
     };
 
@@ -480,6 +510,61 @@ export default function PlayerApp() {
   );
 
   if (session.status === 'QUESTION') {
+    const qType = session.quizSnapshot.questions[session.currentQuestionIndex].type || 'CHOICE';
+    const amLocked = session.lockedPlayers?.includes(user.uid);
+    const buzzedPlayer = session.buzzedPlayer;
+    
+    // --- BUZZER MODE UI ---
+    if (qType === 'BUZZER') {
+        if (amLocked) return (
+            <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white p-6 text-center`}>
+                <div className="bg-rose-500/10 p-8 rounded-full mb-6 border border-rose-500/20">
+                    <Lock size={64} className="text-rose-500" />
+                </div>
+                <h2 className="text-3xl font-black mb-2 text-rose-400">Locked Out</h2>
+                <p className="text-slate-500 font-bold">Incorrect attempt. Wait for next round.</p>
+            </div>
+        );
+
+        if (buzzedPlayer) {
+            if (buzzedPlayer.uid === user.uid) {
+                return (
+                    <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white p-6 text-center animate-pulse`}>
+                        <div className="bg-emerald-500/10 p-8 rounded-full mb-6 border border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.3)]">
+                            <Hand size={64} className="text-emerald-500" />
+                        </div>
+                        <h2 className="text-4xl font-black mb-2 text-emerald-400">You're Live!</h2>
+                        <p className="text-white font-bold text-xl">Answer the Host now!</p>
+                    </div>
+                )
+            } else {
+                return (
+                    <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white p-6 text-center opacity-50`}>
+                        <div className="bg-slate-800 p-8 rounded-full mb-6 border border-slate-700">
+                            <Hand size={64} className="text-slate-500" />
+                        </div>
+                        <h2 className="text-2xl font-black mb-2 text-slate-400">Locked</h2>
+                        <p className="text-slate-500 font-bold">Someone else buzzed in...</p>
+                    </div>
+                )
+            }
+        }
+
+        return (
+             <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center p-6`}>
+                 <button 
+                    onClick={handleBuzzer}
+                    className="w-72 h-72 rounded-full bg-rose-600 border-b-8 border-rose-800 active:border-b-0 active:translate-y-2 active:bg-rose-700 text-white shadow-[0_0_60px_rgba(225,29,72,0.4)] flex flex-col items-center justify-center gap-4 transition-all hover:scale-105"
+                 >
+                     <Hand size={80} fill="currentColor" />
+                     <span className="text-4xl font-black tracking-widest">BUZZ!</span>
+                 </button>
+                 <div className="mt-12 text-slate-500 font-bold text-sm uppercase tracking-widest">Tap first to answer</div>
+             </div>
+        );
+    }
+    
+    // --- STANDARD / TYPING FINISHED STATE ---
     if (hasAnswered) return (
       <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white animate-in fade-in duration-300 relative`}>
         <div className="bg-violet-500/10 p-8 rounded-full mb-6 border border-violet-500/20">
@@ -490,6 +575,35 @@ export default function PlayerApp() {
         <button onClick={handleBack} className="absolute bottom-8 text-slate-500 hover:text-white text-xs uppercase font-bold tracking-widest">Quit</button>
       </div>
     );
+
+    // --- TYPING MODE UI ---
+    if (qType === 'TYPING') return (
+        <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center p-6`}>
+            <div className="w-full max-w-md">
+                <div className="mb-8 text-center">
+                    <h2 className="text-2xl font-black text-white mb-2">Type your answer</h2>
+                    <p className="text-slate-500 text-sm">Case insensitive match</p>
+                </div>
+                <div className="flex flex-col gap-4">
+                    <input 
+                        value={typingAnswer}
+                        onChange={(e) => setTypingAnswer(e.target.value)}
+                        className="w-full p-6 text-2xl font-black text-center rounded-2xl bg-[#0F172A] border-2 border-slate-700 text-white focus:border-blue-500 outline-none transition-all placeholder-slate-700"
+                        placeholder="..."
+                    />
+                    <Button 
+                        onClick={() => submitAnswer(typingAnswer)}
+                        className="w-full py-5 text-xl bg-blue-600 hover:bg-blue-500 text-white"
+                        disabled={!typingAnswer.trim()}
+                    >
+                        SUBMIT <Send size={20} className="ml-2" />
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+
+    // --- STANDARD CHOICE UI ---
     return (
       <div className={`h-screen grid grid-cols-2 gap-4 p-4 ${THEME.bg}`}>
         {THEME.shapes.map((s, i) => (
@@ -500,8 +614,10 @@ export default function PlayerApp() {
     );
   }
 
-  // --- RESULT SCREEN (INTERIM) ---
+  // --- RESULT SCREEN ---
+  // Note: Buzzer mode results are handled differently (real-time score update) but for uniformity we show this screen when state changes
   const isCorrect = result?.correct;
+  // If result is null but we are in this view, it usually means time ran out without answer
   const bgClass = result === null ? 'bg-slate-900' : (isCorrect ? 'bg-emerald-600' : 'bg-rose-600');
 
   return (
