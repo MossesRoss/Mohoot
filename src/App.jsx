@@ -46,6 +46,7 @@ const THEME = {
   ]
 };
 
+// --- GLOBAL COMPONENTS ---
 const Button = ({ children, onClick, className = '', disabled = false }) => (
   <button
     onClick={onClick}
@@ -53,6 +54,16 @@ const Button = ({ children, onClick, className = '', disabled = false }) => (
     className={`active:scale-95 transition-all flex items-center justify-center font-bold shadow-lg rounded-2xl ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
   >
     {children}
+  </button>
+);
+
+const GlobalExitButton = ({ onClick }) => (
+  <button
+    onClick={onClick}
+    className="fixed top-4 left-4 z-50 p-2 rounded-full bg-black/20 hover:bg-rose-500/20 text-white/40 hover:text-rose-400 transition-all backdrop-blur-md border border-white/5 hover:border-rose-500/30 group"
+    title="Emergency Exit"
+  >
+    <XCircle size={20} className="group-hover:scale-110 transition-transform" />
   </button>
 );
 
@@ -480,6 +491,7 @@ export default function PlayerApp() {
 
   if (!session) return (
     <div className={`h-screen flex flex-col items-center justify-center ${THEME.bg} text-white`}>
+      <GlobalExitButton onClick={handleBack} />
       <Loader2 size={48} className="animate-spin mb-4 text-violet-500" />
       <div className="font-bold text-xl tracking-tight animate-pulse text-violet-200">Syncing with Host...</div>
       <button onClick={handleBack} className="mt-8 text-slate-500 hover:text-white underline text-sm">Cancel</button>
@@ -489,6 +501,7 @@ export default function PlayerApp() {
   // --- LOBBY SCREEN ---
   if (session.status === 'LOBBY') return (
     <div className={`h-screen ${THEME.bg} text-white flex flex-col items-center justify-center p-6 text-center relative overflow-hidden`}>
+      <GlobalExitButton onClick={handleBack} />
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-10 mix-blend-screen"></div>
       
       <div className="relative z-10 flex flex-col items-center w-full max-w-md">
@@ -518,6 +531,7 @@ export default function PlayerApp() {
     if (qType === 'BUZZER') {
         if (amLocked) return (
             <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white p-6 text-center`}>
+                <GlobalExitButton onClick={handleBack} />
                 <div className="bg-rose-500/10 p-8 rounded-full mb-6 border border-rose-500/20">
                     <Lock size={64} className="text-rose-500" />
                 </div>
@@ -530,6 +544,7 @@ export default function PlayerApp() {
             if (buzzedPlayer.uid === user.uid) {
                 return (
                     <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white p-6 text-center animate-pulse`}>
+                        <GlobalExitButton onClick={handleBack} />
                         <div className="bg-emerald-500/10 p-8 rounded-full mb-6 border border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.3)]">
                             <Hand size={64} className="text-emerald-500" />
                         </div>
@@ -540,6 +555,7 @@ export default function PlayerApp() {
             } else {
                 return (
                     <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white p-6 text-center opacity-50`}>
+                        <GlobalExitButton onClick={handleBack} />
                         <div className="bg-slate-800 p-8 rounded-full mb-6 border border-slate-700">
                             <Hand size={64} className="text-slate-500" />
                         </div>
@@ -552,12 +568,12 @@ export default function PlayerApp() {
 
         return (
              <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center p-6`}>
+                 <GlobalExitButton onClick={handleBack} />
                  <button 
                     onClick={handleBuzzer}
-                    className="w-72 h-72 rounded-full bg-rose-600 border-b-8 border-rose-800 active:border-b-0 active:translate-y-2 active:bg-rose-700 text-white shadow-[0_0_60px_rgba(225,29,72,0.4)] flex flex-col items-center justify-center gap-4 transition-all hover:scale-105"
+                    className="w-72 h-72 rounded-full bg-gradient-to-b from-red-700 to-red-900 border-b-8 border-red-950 active:border-b-0 active:translate-y-2 active:bg-red-800 text-white shadow-[0_0_60px_rgba(153,27,27,0.4)] flex flex-col items-center justify-center gap-4 transition-all hover:scale-105"
                  >
-                     <Hand size={80} fill="currentColor" />
-                     <span className="text-4xl font-black tracking-widest">BUZZ!</span>
+                     <span className="text-4xl font-black tracking-widest drop-shadow-lg">BUZZ!</span>
                  </button>
                  <div className="mt-12 text-slate-500 font-bold text-sm uppercase tracking-widest">Tap first to answer</div>
              </div>
@@ -567,6 +583,7 @@ export default function PlayerApp() {
     // --- STANDARD / TYPING FINISHED STATE ---
     if (hasAnswered) return (
       <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center text-white animate-in fade-in duration-300 relative`}>
+        <GlobalExitButton onClick={handleBack} />
         <div className="bg-violet-500/10 p-8 rounded-full mb-6 border border-violet-500/20">
           <Loader2 size={64} className="animate-spin text-violet-400" />
         </div>
@@ -579,6 +596,7 @@ export default function PlayerApp() {
     // --- TYPING MODE UI ---
     if (qType === 'TYPING') return (
         <div className={`h-screen ${THEME.bg} flex flex-col items-center justify-center p-6`}>
+            <GlobalExitButton onClick={handleBack} />
             <div className="w-full max-w-md">
                 <div className="mb-8 text-center">
                     <h2 className="text-2xl font-black text-white mb-2">Type your answer</h2>
@@ -605,7 +623,8 @@ export default function PlayerApp() {
 
     // --- STANDARD CHOICE UI ---
     return (
-      <div className={`h-screen grid grid-cols-2 gap-4 p-4 ${THEME.bg}`}>
+      <div className={`h-screen grid grid-cols-2 gap-4 p-4 ${THEME.bg} relative`}>
+        <GlobalExitButton onClick={handleBack} />
         {THEME.shapes.map((s, i) => (
           <Button key={i} className={`${s.color} border-b-4 ${s.border} ${s.hover} h-full w-full text-white shadow-none text-6xl active:border-b-0 active:translate-y-1 transition-all`} onClick={() => submitAnswer(i)}>
           </Button>
@@ -622,6 +641,7 @@ export default function PlayerApp() {
 
   return (
     <div className={`h-screen flex flex-col items-center justify-center text-white p-6 text-center ${bgClass} transition-colors duration-500 relative`}>
+      <GlobalExitButton onClick={handleBack} />
       <div className="bg-white/20 p-8 rounded-full mb-6 backdrop-blur-md shadow-2xl ring-4 ring-white/10">
         {result === null ? <LogOut size={60} /> : (isCorrect ? <CheckCircle2 size={60} /> : <XCircle size={60} />)}
       </div>
@@ -640,14 +660,6 @@ export default function PlayerApp() {
         <div className="text-xs font-bold uppercase tracking-widest mb-1 text-white/60">Total Score</div>
         <div className="text-5xl font-black">{session.players[user.uid]?.score || 0}</div>
       </div>
-
-      <button 
-        onClick={handleBack} 
-        className="absolute top-6 right-6 p-2 rounded-full bg-black/20 hover:bg-black/40 text-white/70 hover:text-white transition-all"
-        title="Force Quit"
-      >
-        <XCircle size={24} />
-      </button>
   
     </div>
   );
