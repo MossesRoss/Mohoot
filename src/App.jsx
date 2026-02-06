@@ -171,6 +171,7 @@ export default function PlayerApp() {
   const [typingAnswer, setTypingAnswer] = useState("");
   
   const joinTimeRef = useRef(Date.now());
+  const lastKnownScoreRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
@@ -270,6 +271,39 @@ export default function PlayerApp() {
     }
 
   }, [session, currentRoundId, user, gameProcessed, nickname]);
+
+  // --- DETECT HOST-AWARDED POINTS (BUZZER) ---
+  useEffect(() => {
+    if (!session || !user) {
+        lastKnownScoreRef.current = null;
+        return;
+    }
+
+    const currentScore = session.players[user.uid]?.score || 0;
+
+    if (lastKnownScoreRef.current === null) {
+        lastKnownScoreRef.current = currentScore;
+        return;
+    }
+
+    if (currentScore > lastKnownScoreRef.current) {
+        const diff = currentScore - lastKnownScoreRef.current;
+        const qIndex = session.currentQuestionIndex;
+        const questions = session.quizSnapshot?.questions;
+        
+        if (questions && questions[qIndex]) {
+             const qType = questions[qIndex].type || 'CHOICE';
+             if (qType === 'BUZZER') {
+                 StatsService.updateStats(db, appId, user.uid, {
+                    incrementQuestionsAnswered: true,
+                    incrementCorrectAnswers: true,
+                    addScore: diff
+                 });
+             }
+        }
+    }
+    lastKnownScoreRef.current = currentScore;
+  }, [session, user]);
   
   const joinGameInternal = async (targetPin, targetName) => {
     if (!user || !targetPin) return;
