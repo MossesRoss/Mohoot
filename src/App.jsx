@@ -397,7 +397,7 @@ export default function PlayerApp() {
     const timeLeft = session.endTime - Date.now();
     const duration = currentQ.duration * 1000;
 
-    const bonus = isCorrect ? Math.round(500 + (500 * (Math.max(0, timeLeft) / duration))) : 0;
+    const bonus = isCorrect ? Math.round(5 + (5 * (Math.max(0, timeLeft) / duration))) : 0;
     setResult({ correct: isCorrect, score: bonus });
 
     StatsService.updateStats(db, appId, user.uid, {
